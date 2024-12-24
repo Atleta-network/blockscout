@@ -1,0 +1,39 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    environment: testnet_v2
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          touch ~/.ssh/known_hosts
+          ssh-keyscan ${{ secrets.EXPLORER_HOST }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          eval $(ssh-agent)
+
+      - name: Copy Files to Server
+        run: |
+          scp -r docker-compose/*    ${{ secrets.HOST_USER}}@${{ secrets.EXPLORER_HOST }}:/blockscout
+
+      - name: SSH into Server and Deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.EXPLORER_HOST }}
+          username: ${{ secrets.HOST_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /blockscout
+            docker rm -f backend || true
+            docker compose down
+            docker compose pull
+            docker compose up --detach --build --remove-orphans
