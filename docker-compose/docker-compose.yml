@@ -1,4 +1,4 @@
-version: '3.9'
+version: "3.9"
 
 services:
   redis-db:
@@ -34,10 +34,10 @@ services:
     links:
       - db:database
     environment:
-        ETHEREUM_JSONRPC_HTTP_URL: https://priv-rpc.testnet-v2.atleta.network/
-        ETHEREUM_JSONRPC_TRACE_URL: https://priv-rpc.testnet-v2.atleta.network/
-        ETHEREUM_JSONRPC_WS_URL: wss://priv-rpc.testnet-v2.atleta.network/
-        CHAIN_ID: '2340'
+      ETHEREUM_JSONRPC_HTTP_URL: https://priv-rpc.testnet-v2.atleta.network/
+      ETHEREUM_JSONRPC_TRACE_URL: https://priv-rpc.testnet-v2.atleta.network/
+      ETHEREUM_JSONRPC_WS_URL: wss://priv-rpc.testnet-v2.atleta.network/
+      CHAIN_ID: "1337"
 
   nft_media_handler:
     depends_on:
