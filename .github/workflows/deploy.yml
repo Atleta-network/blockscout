@@ -31,7 +31,7 @@ jobs:
         run: |
             cd docker-compose/envs
             envsubst < common-frontend.env > common-frontend_fill.env
-            mv common-frontend_fill.env common-frontend_fill.env
+            mv common-frontend_fill.env common-frontend.env
 
       - name: Copy Files to Server
         run: |
