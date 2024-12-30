@@ -3,7 +3,7 @@ version: '3.9'
 services:
   proxy:
     image: nginx
-    pull_policy: never
+    #pull_policy: never
     container_name: proxy
     restart: unless-stopped
     extra_hosts:
