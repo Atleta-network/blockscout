@@ -11,6 +11,10 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get install gettext  
         
       - name: Set up SSH
         run: |
@@ -20,6 +24,14 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
           eval $(ssh-agent)
+
+      - name: Generate .env file
+        env:
+          NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-frontend.env > common-frontend_fill.env
+            mv common-frontend_fill.env common-frontend_fill.env
 
       - name: Copy Files to Server
         run: |
