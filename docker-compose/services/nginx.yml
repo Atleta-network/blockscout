@@ -13,6 +13,7 @@ services:
       - ./certbot/conf/:/etc/nginx/ssl/
       - ./certbot/www/:/var/www/certbot/
       - /var/log/nginx/:/var/log/nginx
+      - ./.well-known:/var/www/reown/.well-known
     environment:
       BACK_PROXY_PASS: ${BACK_PROXY_PASS:-http://backend:4000}
       FRONT_PROXY_PASS: ${FRONT_PROXY_PASS:-http://frontend:3000}
