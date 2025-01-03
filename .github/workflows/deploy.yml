@@ -37,7 +37,7 @@ jobs:
         run: |
             cd docker-compose/services
             mkdir .well-known
-            echo ${{ secrets.WALLETCONNECT}} > ./well-known/walletconnect.txt
+            echo ${{ secrets.WALLETCONNECT}} > ./.well-known/walletconnect.txt
 
       - name: Copy Files to Server
         run: |
