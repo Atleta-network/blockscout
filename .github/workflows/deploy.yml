@@ -25,13 +25,19 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           eval $(ssh-agent)
 
-      - name: Generate .env file
+      - name: Fill .env file
         env:
           NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
         run: |
             cd docker-compose/envs
             envsubst < common-frontend.env > common-frontend_fill.env
             mv common-frontend_fill.env common-frontend.env
+
+      - name: Fill verification key
+        run: |
+            cd docker-compose/services
+            mkdir .well-known
+            echo ${{ secrets.WALLETCONNECT}} > ./well-known/walletconnect.txt
 
       - name: Copy Files to Server
         run: |
