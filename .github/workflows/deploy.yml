@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    environment: testnet_v2
+    environment: devnet
     runs-on: self-hosted
 
     steps:
