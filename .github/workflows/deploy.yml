@@ -9,18 +9,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
       - name: Create Image Tarball for explorer-frontend
         run: |
           git clone https://github.com/Atleta-network/blockscout-frontend.git
           cd blockscout-frontend
           git checkout develop
-          docker build --build-arg GIT_COMMIT_SHA=$(git rev-parse --short HEAD) --build-arg GIT_TAG=$(git describe --tags --abbrev=0) --tag explorer-frontend .
+          docker build \
+            --build-arg GIT_COMMIT_SHA=$(git rev-parse --short HEAD) \
+            --build-arg GIT_TAG=$(git describe --tags --abbrev=0) \
+            --tag explorer-frontend ./
           cd ../
           mkdir -p artifacts
-          docker save --output artifacts/explorer-frontend.tar explorer-frontend
-
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+          docker save explorer-frontend > artifacts/explorer-frontend.tar
 
       - name: Install system dependencies
         run: |
@@ -64,6 +67,6 @@ jobs:
             cd /blockscout
             docker load --input explorer-frontend.tar
             docker rm -f backend || true
-            docker compose down
-            docker compose pull
+            docker compose down || true
+            docker compose pull || true
             docker compose up --detach
