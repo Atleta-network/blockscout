@@ -5,10 +5,20 @@ on:
 
 jobs:
   build:
-    environment: testnet_v2
-    runs-on: self-hosted
+    environment: devnet
+    runs-on: ubuntu-latest
 
     steps:
+      - name: Create Image Tarball for explorer-frontend
+        run: |
+          git clone https://github.com/Atleta-network/blockscout-frontend.git
+          cd blockscout-frontend
+          git checkout develop
+          docker build --build-arg GIT_COMMIT_SHA=$(git rev-parse --short HEAD) --build-arg GIT_TAG=$(git describe --tags --abbrev=0) --tag explorer-frontend .
+          cd ../
+          mkdir -p artifacts
+          docker save --output artifacts/explorer-frontend.tar explorer-frontend
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -42,6 +52,7 @@ jobs:
       - name: Copy Files to Server
         run: |
           scp -r docker-compose/*    ${{ secrets.HOST_USER}}@${{ secrets.EXPLORER_HOST }}:/blockscout
+          scp -r artifacts/*    ${{ secrets.HOST_USER}}@${{ secrets.EXPLORER_HOST }}:/blockscout
 
       - name: SSH into Server and Deploy
         uses: appleboy/ssh-action@v1.0.0
@@ -51,6 +62,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /blockscout
+            docker load --input explorer-frontend.tar
             docker rm -f backend || true
             docker compose down
             docker compose pull
