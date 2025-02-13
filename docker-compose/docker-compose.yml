@@ -34,10 +34,10 @@ services:
     links:
       - db:database
     environment:
-      ETHEREUM_JSONRPC_HTTP_URL: http://67.220.74.167:9944/
-      ETHEREUM_JSONRPC_TRACE_URL: http://67.220.74.167:9944/
-      ETHEREUM_JSONRPC_WS_URL: ws://67.220.74.167:9944/
-      CHAIN_ID: "2340"
+      ETHEREUM_JSONRPC_HTTP_URL: https://rpc.stagenet.atleta.network/
+      ETHEREUM_JSONRPC_TRACE_URL: https://rpc.stagenet.atleta.network/
+      ETHEREUM_JSONRPC_WS_URL: wss://rpc.stagenet.atleta.network/
+      CHAIN_ID: "2440"
 
   nft_media_handler:
     depends_on:

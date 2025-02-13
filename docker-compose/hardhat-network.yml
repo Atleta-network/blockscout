@@ -54,7 +54,6 @@ services:
     environment:
       NEXT_PUBLIC_NETWORK_ID: '31337'
       NEXT_PUBLIC_NETWORK_RPC_URL: http://host.docker.internal:8545/
-      NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: "${NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID}"
 
   stats-db-init:
     extends:
