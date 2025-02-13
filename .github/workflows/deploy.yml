@@ -6,11 +6,28 @@ on:
 jobs:
   build:
     environment: testnet_v2
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Create Image Tarball for explorer-frontend
+        run: |
+          git clone https://github.com/Atleta-network/blockscout-frontend.git
+          cd blockscout-frontend
+          git checkout develop
+          docker build \
+            --build-arg GIT_COMMIT_SHA=$(git rev-parse --short HEAD) \
+            --build-arg GIT_TAG=$(git describe --tags --abbrev=0) \
+            --tag explorer-frontend ./
+          cd ../
+          mkdir -p artifacts
+          docker save explorer-frontend > artifacts/explorer-frontend.tar
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get install gettext  
         
       - name: Set up SSH
         run: |
@@ -21,9 +38,24 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           eval $(ssh-agent)
 
+      - name: Fill .env file
+        env:
+          NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-frontend.env > common-frontend_fill.env
+            mv common-frontend_fill.env common-frontend.env
+
+      - name: Fill verification key
+        run: |
+            cd docker-compose/services
+            mkdir .well-known
+            echo ${{ secrets.WALLETCONNECT}} > ./.well-known/walletconnect.txt
+
       - name: Copy Files to Server
         run: |
           scp -r docker-compose/*    ${{ secrets.HOST_USER}}@${{ secrets.EXPLORER_HOST }}:/blockscout
+          scp -r artifacts/*    ${{ secrets.HOST_USER}}@${{ secrets.EXPLORER_HOST }}:/blockscout
 
       - name: SSH into Server and Deploy
         uses: appleboy/ssh-action@v1.0.0
@@ -33,7 +65,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd /blockscout
+            docker load --input explorer-frontend.tar
             docker rm -f backend || true
-            docker compose down
-            docker compose pull
-            docker compose up --detach --build --remove-orphans
+            docker compose down || true
+            docker compose pull || true
+            docker compose up --detach
