@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    environment: testnet_v2
+    environment: mainnet
     runs-on: ubuntu-latest
 
     steps:

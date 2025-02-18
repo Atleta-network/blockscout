@@ -11,16 +11,16 @@ server {
     ssl_certificate /etc/nginx/ssl/live/blockscout.atleta.network/fullchain.pem;
     ssl_certificate_key /etc/nginx/ssl/live/blockscout.atleta.network/privkey.pem;
 
-    return 301 https://blockscout.testnet-v2.atleta.network$request_uri;
+    return 301 https://blockscout.mainnet.atleta.network$request_uri;
 }
 
 server {
     listen       443 ssl;
-    server_name  blockscout.testnet-v2.atleta.network;
+    server_name  blockscout.mainnet.atleta.network;
     proxy_http_version 1.1;
 
-    ssl_certificate /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/privkey.pem;
+    ssl_certificate /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/privkey.pem;
 
     location ~ ^/(api(?!-docs$)|socket|sitemap.xml|auth/auth0|auth/auth0/callback|auth/logout) {
         proxy_pass            ${BACK_PROXY_PASS};
@@ -50,11 +50,11 @@ server {
 }
 server {
     listen       8080 ssl;
-    server_name  blockscout.testnet-v2.atleta.network;
+    server_name  blockscout.mainnet.atleta.network;
     proxy_http_version 1.1;
 
-    ssl_certificate /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/privkey.pem;
+    ssl_certificate /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/privkey.pem;
 
     proxy_hide_header Access-Control-Allow-Origin;
     proxy_hide_header Access-Control-Allow-Methods;
@@ -76,11 +76,11 @@ server {
 }
 server {
     listen       8081 ssl;
-    server_name  blockscout.testnet-v2.atleta.network;
+    server_name  blockscout.mainnet.atleta.network;
     proxy_http_version 1.1;
 
-    ssl_certificate /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/privkey.pem;
+    ssl_certificate /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/live/blockscout.mainnet.atleta.network/privkey.pem;
 
     proxy_hide_header Access-Control-Allow-Origin;
     proxy_hide_header Access-Control-Allow-Methods;
