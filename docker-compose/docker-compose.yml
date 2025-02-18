@@ -34,10 +34,10 @@ services:
     links:
       - db:database
     environment:
-      ETHEREUM_JSONRPC_HTTP_URL: https://priv-rpc-03.mainnet.atleta.network/
-      ETHEREUM_JSONRPC_TRACE_URL: http://priv-rpc-03.mainnet.atleta.network/
-      ETHEREUM_JSONRPC_WS_URL: wss://priv-rpc-03.mainnet.atleta.network/
-      CHAIN_ID: "2440"
+      ETHEREUM_JSONRPC_HTTP_URL: https://rpc.devnet.atleta.network/
+      ETHEREUM_JSONRPC_TRACE_URL: http://rpc.devnet.atleta.network/
+      ETHEREUM_JSONRPC_WS_URL: wss://rpc.devnet.atleta.network/
+      CHAIN_ID: "2320"
 
   nft_media_handler:
     depends_on:
