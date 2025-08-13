@@ -25,13 +25,11 @@ server {
         proxy_set_header      Upgrade "$http_upgrade";
         proxy_set_header      Connection $connection_upgrade;
         proxy_cache_bypass    $http_upgrade;
-
         limit_req zone=req_limit burst=20;
         limit_conn conn_limit 70;
         limit_rate 5m;
         limit_rate_after 10m;
         limit_req_status 429;
-
     }
     location / {
         proxy_pass            ${FRONT_PROXY_PASS};
@@ -48,27 +46,12 @@ server {
         limit_rate 5m;
         limit_rate_after 10m;
         limit_req_status 429;
-
     }
     location /.well-known/ {
         alias /var/www/reown/.well-known/;
     }
-}
-server {
-    listen       8080 ssl;
-    server_name  blockscout.testnet-v2.atleta.network;
-    proxy_http_version 1.1;
 
-    ssl_certificate /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/privkey.pem;
-
-    proxy_hide_header Access-Control-Allow-Origin;
-    proxy_hide_header Access-Control-Allow-Methods;
-    add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
-    add_header 'Access-Control-Allow-Credentials' 'true' always;
-    add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
-
-    location / {
+    location /stats-api/ {
         proxy_pass            http://stats:8050/;
         proxy_http_version    1.1;
         proxy_set_header      Host "$host";
@@ -78,29 +61,34 @@ server {
         proxy_set_header      Upgrade "$http_upgrade";
         proxy_set_header      Connection $connection_upgrade;
         proxy_cache_bypass    $http_upgrade;
+
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,x-csrf-token' always;
+
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,x-csrf-token' always;
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain charset=UTF-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+
         limit_req zone=req_limit burst=20;
         limit_conn conn_limit 70;
         limit_rate 5m;
         limit_rate_after 10m;
         limit_req_status 429;
+
     }
-}
-server {
-    listen       8081 ssl;
-    server_name  blockscout.testnet-v2.atleta.network;
-    proxy_http_version 1.1;
 
-    ssl_certificate /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/fullchain.pem;
-    ssl_certificate_key /etc/nginx/ssl/live/blockscout.testnet-v2.atleta.network/privkey.pem;
-
-    proxy_hide_header Access-Control-Allow-Origin;
-    proxy_hide_header Access-Control-Allow-Methods;
-    add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
-    add_header 'Access-Control-Allow-Credentials' 'true' always;
-    add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
-    add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,x-csrf-token' always;
-
-    location / {
+    location /visualizer-api/ {
         proxy_pass            http://visualizer:8050/;
         proxy_http_version    1.1;
         proxy_buffering       off;
@@ -114,8 +102,16 @@ server {
         proxy_set_header      Upgrade "$http_upgrade";
         proxy_set_header      Connection $connection_upgrade;
         proxy_cache_bypass    $http_upgrade;
+
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,x-csrf-token' always;
+
         if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' 'http://localhost' always;
+            add_header 'Access-Control-Allow-Origin' 'https://blockscout.testnet-v2.atleta.network' always;
             add_header 'Access-Control-Allow-Credentials' 'true' always;
             add_header 'Access-Control-Allow-Methods' 'PUT, GET, POST, OPTIONS, DELETE, PATCH' always;
             add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,x-csrf-token' always;
@@ -124,10 +120,12 @@ server {
             add_header 'Content-Length' 0;
             return 204;
         }
+
         limit_req zone=req_limit burst=20;
         limit_conn conn_limit 70;
         limit_rate 5m;
         limit_rate_after 10m;
         limit_req_status 429;
+
     }
 }

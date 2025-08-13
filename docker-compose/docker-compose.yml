@@ -39,17 +39,17 @@ services:
       ETHEREUM_JSONRPC_WS_URL: wss://priv-rpc-01.testnet-v2.atleta.network/
       CHAIN_ID: "2340"
 
-  nft_media_handler:
-    depends_on:
-      - backend
-    extends:
-      file: ./services/nft_media_handler.yml
-      service: nft_media_handler
-    build:
-      context: ..
-      dockerfile: ./docker/Dockerfile
-      args:
-        RELEASE_VERSION: 6.10.0
+#  nft_media_handler:
+#    depends_on:
+#      - backend
+#    extends:
+#      file: ./services/nft_media_handler.yml
+#      service: nft_media_handler
+#    build:
+#      context: ..
+#      dockerfile: ./docker/Dockerfile
+#      args:
+#        RELEASE_VERSION: 6.10.0
 
   visualizer:
     extends:
@@ -105,3 +105,8 @@ services:
     extends:
       file: ./services/nginx.yml
       service: proxy
+
+  promtail:
+    extends:
+      file: ./services/promtail.yml
+      service: promtail
