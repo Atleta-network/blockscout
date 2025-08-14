@@ -70,7 +70,7 @@ jobs:
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
           CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-          SERVICE_NAME: ${{ secrets.SERVICE_NAME }}
+          SERVICE_NAME: blockscout-frontend
           SERVICE_TAG: ${{ github.sha }}
         run: |
             cd docker-compose/services
