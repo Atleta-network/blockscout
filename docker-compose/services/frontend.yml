@@ -2,8 +2,7 @@ version: '3.9'
 
 services:
   frontend:
-    image: explorer-frontend
-    pull_policy: never
+    image: "${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
     platform: linux/amd64
     restart: always
     container_name: 'frontend'
