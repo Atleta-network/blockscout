@@ -106,7 +106,3 @@ services:
       file: ./services/nginx.yml
       service: proxy
 
-  promtail:
-    extends:
-      file: ./services/promtail.yml
-      service: promtail
