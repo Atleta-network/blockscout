@@ -106,3 +106,9 @@ services:
       file: ./services/nginx.yml
       service: proxy
 
+  certbot:
+    depends_on:
+      - proxy
+    extends:
+      file: ./services/certbot.yml
+      service: certbot
