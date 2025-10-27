@@ -1,0 +1,15 @@
+version: '3.9'
+
+services:
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    restart: always
+    volumes:
+      - ./certbot/www/:/var/www/certbot/:rw
+      - ./certbot/conf/:/etc/letsencrypt/:rw
+      - ./certbot/certbot.sh:/opt/certbot/certbot.sh:ro
+    entrypoint: "/bin/sh -c 'trap exit TERM; sh certbot.sh; sleep 12h'"
+    environment:
+      - CERTBOT_EMAIL=idquantum@gmail.com
+      - CERTBOT_DOMAINS=blockscout.testnet-v2.atleta.network
