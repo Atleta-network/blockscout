@@ -10,12 +10,37 @@ defmodule Indexer.Fetcher.Arbitrum.Workers.L1Finalization do
 
   import Indexer.Fetcher.Arbitrum.Utils.Logging, only: [log_info: 1]
 
+  alias Indexer.Fetcher.Arbitrum.Utils.Db.ParentChainTransactions, as: Db
+  alias Indexer.Fetcher.Arbitrum.Utils.Rpc
   alias Indexer.Helper, as: IndexerHelper
-  alias Indexer.Fetcher.Arbitrum.Utils.{Db, Rpc}
 
   alias Explorer.Chain
 
   require Logger
+
+  @doc """
+    Determines whether settlement transactions finalization should be run based on configuration.
+
+    ## Parameters
+    - A map containing configuration with L1 RPC settings.
+
+    ## Returns
+    - `true` if finalization tracking is enabled in the configuration
+    - `false` otherwise
+  """
+  @spec run_settlement_transactions_finalization?(%{
+          :config => %{
+            :l1_rpc => %{
+              :track_finalization => boolean(),
+              optional(any()) => any()
+            },
+            optional(any()) => any()
+          },
+          optional(any()) => any()
+        }) :: boolean()
+  def run_settlement_transactions_finalization?(%{config: %{l1_rpc: %{track_finalization: track_finalization}}}) do
+    track_finalization
+  end
 
   @doc """
     Monitors and updates the status of lifecycle transactions related an Arbitrum rollup to 'finalized'.
@@ -55,7 +80,7 @@ defmodule Indexer.Fetcher.Arbitrum.Workers.L1Finalization do
 
     lifecycle_transactions = Db.lifecycle_unfinalized_transactions(safe_block)
 
-    if length(lifecycle_transactions) > 0 do
+    unless Enum.empty?(lifecycle_transactions) do
       log_info("Discovered #{length(lifecycle_transactions)} lifecycle transaction to be finalized")
 
       updated_lifecycle_transactions =
