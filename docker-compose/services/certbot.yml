@@ -12,4 +12,4 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; sh certbot.sh; sleep 12h'"
     environment:
       - CERTBOT_EMAIL=idquantum@gmail.com
-      - CERTBOT_DOMAINS=blockscout.atleta.network
+      - CERTBOT_DOMAINS=stage-blockscout.atleta.network
