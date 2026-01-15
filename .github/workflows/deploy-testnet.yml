@@ -90,14 +90,13 @@ jobs:
             envsubst < common-user-ops-indexer.env > common-user-ops-indexer_fill.env
             mv common-user-ops-indexer_fill.env common-user-ops-indexer.env
 
-      - name: Fill common-user-ops-indexer.env
+      - name: Fill common-stats.env
         env:
-          BACKEND_VERSION: ${{ vars.BACKEND_VERSION}}
-          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID}}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL}}
         run: |
-            cd docker-compose/
-            envsubst < docker-compose.yml > docker-compose_fill.yml
-            mv docker-compose_fill.yml docker-compose.yml
+            cd docker-compose/envs
+            envsubst < common-stats.env > common-stats_fill.env
+            mv common-stats_fill.env common-stats.env
 
       - name: Fill verification key
         run: |
@@ -122,8 +121,8 @@ jobs:
           CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
         run: |
             cd docker-compose/services
-            envsubst < frontend.yml > frontend_fill.yml
-            mv frontend_fill.yml frontend.yml
+            envsubst < certbot.yml > certbot_fill.yml
+            mv certbot_fill.yml certbot.yml
 
       - name: Fill default.conf.template
         env:
