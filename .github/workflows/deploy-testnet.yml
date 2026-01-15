@@ -55,6 +55,7 @@ jobs:
       - name: Fill common-frontend.env
         env:
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          IS_TESTNET: ${{ vars.IS_TESTNET }}
           NETWORK_NAME: ${{ vars.NETWORK_NAME }}
           NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
           NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
