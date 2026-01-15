@@ -1,11 +1,11 @@
-name: Deploy
+name: Deploy on Testnet
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    environment: mainnet
+    environment: testnet_v2
     runs-on: self-hosted
 
     steps:
@@ -26,7 +26,7 @@ jobs:
           username: ${{ secrets.CI_REGISTRY_USER }}
           password: ${{ secrets.CI_REGISTRY_PASSWORD }}
 
-      - name: Build and push explorer-frontend image
+      - name: Build and push blockscout-frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./blockscout-frontend
@@ -54,11 +54,49 @@ jobs:
 
       - name: Fill common-frontend.env
         env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
           NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
         run: |
             cd docker-compose/envs
             envsubst < common-frontend.env > common-frontend_fill.env
             mv common-frontend_fill.env common-frontend.env
+
+      - name: Fill common-blockscout.env
+        env:
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-blockscout.env > common-blockscout_fill.env
+            mv common-blockscout_fill.env common-blockscout.env
+
+      - name: Fill common-user-ops-indexer.env
+        env:
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-user-ops-indexer.env > common-user-ops-indexer_fill.env
+            mv common-user-ops-indexer_fill.env common-user-ops-indexer.env
+
+      - name: Fill common-user-ops-indexer.env
+        env:
+          BACKEND_VERSION: ${{ vars.BACKEND_VERSION}}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID}}
+        run: |
+            cd docker-compose/
+            envsubst < docker-compose.yml > docker-compose_fill.yml
+            mv docker-compose_fill.yml docker-compose.yml
 
       - name: Fill verification key
         run: |
@@ -66,7 +104,7 @@ jobs:
             mkdir .well-known
             echo ${{ secrets.WALLETCONNECT}} > ./.well-known/walletconnect.txt
 
-      - name: Fill common-frontend.env
+      - name: Fill frontend.yml
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
           CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
@@ -76,6 +114,47 @@ jobs:
             cd docker-compose/services
             envsubst < frontend.yml > frontend_fill.yml
             mv frontend_fill.yml frontend.yml
+
+      - name: Fill certbot.yml
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+        run: |
+            cd docker-compose/services
+            envsubst < frontend.yml > frontend_fill.yml
+            mv frontend_fill.yml frontend.yml
+
+      - name: Fill default.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < default.conf.template > default.conf_fill.template
+            mv default.conf_fill.template default.conf.template
+
+      - name: Fill default.conf.template.new
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < default.conf.template.new > default.conf_fill.template.new
+            mv default.conf_fill.template.new default.conf.template.new
+
+      - name: Fill explorer.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < explorer.conf.template > explorer.conf_fill.template
+            mv explorer.conf_fill.template explorer.conf.template
+
+      - name: Fill microservices.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < microservices.conf.template > microservices.conf_fill.template
+            mv microservices.conf_fill.template microservices.conf.template
 
       - name: Copy Files to Server
         run: |

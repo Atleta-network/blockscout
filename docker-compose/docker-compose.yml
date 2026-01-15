@@ -30,14 +30,14 @@ services:
       context: ..
       dockerfile: ./docker/Dockerfile
       args:
-        RELEASE_VERSION: 9.0.2
+        RELEASE_VERSION: ${BACKEND_VERSION}
     links:
       - db:database
     environment:
-      ETHEREUM_JSONRPC_HTTP_URL: https://priv-rpc-01.mainnet.atleta.network/
-      ETHEREUM_JSONRPC_TRACE_URL: https://priv-rpc-01.mainnet.atleta.network/
-      ETHEREUM_JSONRPC_WS_URL: wss://priv-rpc-01.mainnet.atleta.network/
-      CHAIN_ID: "2440"
+      ETHEREUM_JSONRPC_HTTP_URL: https://${PRIV_RPC_NAME}/
+      ETHEREUM_JSONRPC_TRACE_URL: https://${PRIV_RPC_NAME}/
+      ETHEREUM_JSONRPC_WS_URL: wss://${PRIV_RPC_NAME}/
+      CHAIN_ID: "${NETWORK_CHAIN_ID}"
 
   # nft_media_handler:
   #   depends_on:
