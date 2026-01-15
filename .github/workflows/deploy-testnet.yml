@@ -6,7 +6,7 @@ on:
 jobs:
   build:
     environment: testnet_v2
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
