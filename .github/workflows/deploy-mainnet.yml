@@ -1,0 +1,200 @@
+name: Deploy on Mainnet
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    environment: mainnet
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Checkout blockscout-frontend repository
+        uses: actions/checkout@v4
+        with:
+          repository: Atleta-network/blockscout-frontend
+          ref: main
+          path: blockscout-frontend
+
+      - name: Log in to Docker Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.CI_REGISTRY }}
+          username: ${{ secrets.CI_REGISTRY_USER }}
+          password: ${{ secrets.CI_REGISTRY_PASSWORD }}
+
+      - name: Build and push blockscout-frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./blockscout-frontend
+          push: true
+          no-cache: true
+          tags: |
+            ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout-frontend:${{ github.sha }}
+            ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout-frontend:latest
+          build-args: |
+            GIT_COMMIT_SHA=${{ github.sha }}
+            GIT_TAG=develop
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get install gettext  
+        
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          touch ~/.ssh/known_hosts
+          ssh-keyscan ${{ secrets.HOST_1 }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          eval $(ssh-agent)
+
+      - name: Fill common-frontend.env
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+          NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-frontend.env > common-frontend_fill.env
+            mv common-frontend_fill.env common-frontend.env
+
+      - name: Fill common-blockscout.env
+        env:
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-blockscout.env > common-blockscout_fill.env
+            mv common-blockscout_fill.env common-blockscout.env
+
+      - name: Fill common-user-ops-indexer.env
+        env:
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+        run: |
+            cd docker-compose/envs
+            envsubst < common-user-ops-indexer.env > common-user-ops-indexer_fill.env
+            mv common-user-ops-indexer_fill.env common-user-ops-indexer.env
+
+      - name: Fill common-user-ops-indexer.env
+        env:
+          BACKEND_VERSION: ${{ vars.BACKEND_VERSION}}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID}}
+        run: |
+            cd docker-compose/
+            envsubst < docker-compose.yml > docker-compose_fill.yml
+            mv docker-compose_fill.yml docker-compose.yml
+
+      - name: Fill verification key
+        run: |
+            cd docker-compose/services
+            mkdir .well-known
+            echo ${{ secrets.WALLETCONNECT}} > ./.well-known/walletconnect.txt
+
+      - name: Fill frontend.yml
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_NAME: blockscout-frontend
+          SERVICE_TAG: ${{ github.sha }}
+        run: |
+            cd docker-compose/services
+            envsubst < frontend.yml > frontend_fill.yml
+            mv frontend_fill.yml frontend.yml
+
+      - name: Fill certbot.yml
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+        run: |
+            cd docker-compose/services
+            envsubst < frontend.yml > frontend_fill.yml
+            mv frontend_fill.yml frontend.yml
+
+      - name: Fill default.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < default.conf.template > default.conf_fill.template
+            mv default.conf_fill.template default.conf.template
+
+      - name: Fill default.conf.template.new
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < default.conf.template.new > default.conf_fill.template.new
+            mv default.conf_fill.template.new default.conf.template.new
+
+      - name: Fill explorer.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < explorer.conf.template > explorer.conf_fill.template
+            mv explorer.conf_fill.template explorer.conf.template
+
+      - name: Fill microservices.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+            cd docker-compose/proxy
+            envsubst '${DOMAIN_NAME}' < microservices.conf.template > microservices.conf_fill.template
+            mv microservices.conf_fill.template microservices.conf.template
+
+      - name: Copy Files to Server
+        run: |
+          scp -r docker-compose/* ${{ secrets.HOST_1_USERNAME}}@${{ secrets.HOST_1 }}:${{ secrets.BASE_PATH }}
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_NAME: blockscout-frontend
+          SERVICE_TAG: ${{ github.sha }}
+          DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
+          BASE_PATH: ${{ secrets.BASE_PATH }}
+        with:
+          host: ${{ secrets.HOST_1 }}
+          username: ${{ secrets.HOST_1_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,BASE_PATH
+          script: |
+            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE,BASE_PATH; do
+              if [ -z "${!var}" ]; then
+                echo "Error: Environment variable ${var} is not set."
+                exit 1
+              fi
+            done
+
+            IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
+
+            update_docker_compose() {
+              local image="$1"
+              local compose_file="$2"
+              sed -i "s|image: .*/${SERVICE_NAME}:.*|image: ${image}|" "${compose_file}"
+            }
+          
+            cd "${BASE_PATH}/services" || exit 1
+          
+            update_docker_compose "${IMAGE}" "${DOCKER_COMPOSE_FILE}"
+
+            cd "${BASE_PATH}" || exit 1
+
+            docker compose down || true
+            docker compose up --detach
