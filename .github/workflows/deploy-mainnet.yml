@@ -39,6 +39,20 @@ jobs:
             GIT_COMMIT_SHA=${{ github.sha }}
             GIT_TAG=develop
 
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          no-cache: true
+          tags: |
+            ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout:${{ github.sha }}
+            ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout:latest
+          build-args: |
+            RELEASE_VERSION=${{ vars.BACKEND_VERSION }}
+            BLOCKSCOUT_VERSION=${{ github.sha }}
+
       - name: Install system dependencies
         run: |
           sudo apt-get install gettext  
@@ -175,7 +189,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,BASE_PATH
           script: |
-            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE,BASE_PATH; do
+            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE BASE_PATH; do
               if [ -z "${!var}" ]; then
                 echo "Error: Environment variable ${var} is not set."
                 exit 1
