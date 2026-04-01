@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   backend:
-    image: "${CI_REGISTRY:-ghcr.io}/${CI_REGISTRY_REPO:-blockscout}/blockscout:${SERVICE_TAG:-latest}"
+    image: "${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
     pull_policy: always
     restart: always
     stop_grace_period: 5m

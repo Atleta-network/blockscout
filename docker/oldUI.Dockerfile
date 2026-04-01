@@ -105,8 +105,9 @@ ENV BLOCKSCOUT_VERSION=${BLOCKSCOUT_VERSION}
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /opt/release/blockscout .
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/apps/explorer/node_modules ./node_modules
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/config_helper.exs ./config/config_helper.exs
-COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/config_helper.exs /app/releases/${RELEASE_VERSION}/config_helper.exs
 COPY --from=builder --chown=${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app/config/assets/precompiles-arbitrum.json ./config/assets/precompiles-arbitrum.json
+RUN release_version="$(cut -d' ' -f1 /app/releases/start_erl.data)" && \
+    cp /app/config/config_helper.exs "/app/releases/${release_version}/config_helper.exs"
 
 RUN mkdir dets && mkdir temp && chown -R ${BLOCKSCOUT_USER}:${BLOCKSCOUT_GROUP} /app
 

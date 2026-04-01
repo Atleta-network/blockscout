@@ -39,6 +39,11 @@ jobs:
             GIT_COMMIT_SHA=${{ github.sha }}
             GIT_TAG=develop
 
+      - name: Resolve release version
+        id: release_version
+        run: |
+          echo "value=$(grep -oE 'version: \"[^\"]+\"' mix.exs | head -n1 | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
@@ -50,7 +55,7 @@ jobs:
             ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout:${{ github.sha }}
             ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout:latest
           build-args: |
-            RELEASE_VERSION=${{ vars.BACKEND_VERSION }}
+            RELEASE_VERSION=${{ steps.release_version.outputs.value }}
             BLOCKSCOUT_VERSION=${{ github.sha }}
 
       - name: Install system dependencies
@@ -122,12 +127,21 @@ jobs:
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
           CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-          SERVICE_NAME: blockscout-frontend
           SERVICE_TAG: ${{ github.sha }}
         run: |
             cd docker-compose/services
             envsubst < frontend.yml > frontend_fill.yml
             mv frontend_fill.yml frontend.yml
+
+      - name: Fill backend.yml
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_TAG: ${{ github.sha }}
+        run: |
+            cd docker-compose/services
+            envsubst < backend.yml > backend_fill.yml
+            mv backend_fill.yml backend.yml
 
       - name: Fill certbot.yml
         env:
@@ -179,34 +193,28 @@ jobs:
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
           CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-          SERVICE_NAME: blockscout-frontend
           SERVICE_TAG: ${{ github.sha }}
-          DOCKER_COMPOSE_FILE: ${{ vars.DOCKER_COMPOSE_FILE }}
           BASE_PATH: ${{ secrets.BASE_PATH }}
         with:
           host: ${{ secrets.HOST_1 }}
           username: ${{ secrets.HOST_1_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_NAME,SERVICE_TAG,DOCKER_COMPOSE_FILE,BASE_PATH
+          envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_TAG,BASE_PATH
           script: |
-            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_NAME SERVICE_TAG DOCKER_COMPOSE_FILE BASE_PATH; do
+            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_TAG BASE_PATH; do
               if [ -z "${!var}" ]; then
                 echo "Error: Environment variable ${var} is not set."
                 exit 1
               fi
             done
 
-            IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/${SERVICE_NAME}:${SERVICE_TAG}"
-
-            update_docker_compose() {
-              local image="$1"
-              local compose_file="$2"
-              sed -i "s|image: .*/${SERVICE_NAME}:.*|image: ${image}|" "${compose_file}"
-            }
-          
             cd "${BASE_PATH}/services" || exit 1
-          
-            update_docker_compose "${IMAGE}" "${DOCKER_COMPOSE_FILE}"
+
+            FRONTEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout-frontend:${SERVICE_TAG}"
+            BACKEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
+
+            sed -i "s|image: .*blockscout-frontend:.*|image: ${FRONTEND_IMAGE}|" frontend.yml
+            sed -i "s|image: .*blockscout:.*|image: ${BACKEND_IMAGE}|" backend.yml
 
             cd "${BASE_PATH}" || exit 1
 
