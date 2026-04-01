@@ -13,6 +13,6 @@ Important placeholders to fill manually:
 
 - `PUB_RPC_NAME`
 - `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID`
-- `NEXT_PUBLIC_ACCOUNT_DYNAMIC_ENVIRONMENT_ID` (only needed when Dynamic auth provider is enabled)
 
-If `NEXT_PUBLIC_ACCOUNT_AUTH_PROVIDER=none`, `NEXT_PUBLIC_ACCOUNT_DYNAMIC_ENVIRONMENT_ID` can stay empty.
+Optional frontend feature flags/envs (account auth, rollup, name services, interchain API) are intentionally omitted by default.
+Add them only for environments where the corresponding feature is enabled.
