@@ -1,0 +1,202 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - mainnet
+          - testnet_v2
+      service_tag:
+        description: Image tag to deploy (commit SHA from Build Images workflow)
+        required: true
+        type: string
+      git_ref:
+        description: Git ref for deployment templates
+        required: true
+        default: main
+        type: string
+
+jobs:
+  deploy:
+    environment: ${{ inputs.environment }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Validate service tag
+        run: |
+          if [ -z "${{ inputs.service_tag }}" ]; then
+            echo "service_tag is required"
+            exit 1
+          fi
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get install gettext
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          touch ~/.ssh/known_hosts
+          ssh-keyscan ${{ secrets.HOST_1 }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          eval $(ssh-agent)
+
+      - name: Fill common-frontend.env
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          IS_TESTNET: ${{ vars.IS_TESTNET }}
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+          NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+        run: |
+          cd docker-compose/envs
+          envsubst < common-frontend.env > common-frontend_fill.env
+          mv common-frontend_fill.env common-frontend.env
+
+      - name: Fill common-blockscout.env
+        env:
+          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
+          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
+          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
+          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+        run: |
+          cd docker-compose/envs
+          envsubst < common-blockscout.env > common-blockscout_fill.env
+          mv common-blockscout_fill.env common-blockscout.env
+
+      - name: Fill common-user-ops-indexer.env
+        env:
+          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+        run: |
+          cd docker-compose/envs
+          envsubst < common-user-ops-indexer.env > common-user-ops-indexer_fill.env
+          mv common-user-ops-indexer_fill.env common-user-ops-indexer.env
+
+      - name: Fill common-stats.env
+        env:
+          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
+        run: |
+          cd docker-compose/envs
+          envsubst < common-stats.env > common-stats_fill.env
+          mv common-stats_fill.env common-stats.env
+
+      - name: Fill verification key
+        run: |
+          cd docker-compose/services
+          mkdir .well-known
+          echo ${{ secrets.WALLETCONNECT }} > ./.well-known/walletconnect.txt
+
+      - name: Fill frontend.yml
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_TAG: ${{ inputs.service_tag }}
+        run: |
+          cd docker-compose/services
+          envsubst < frontend.yml > frontend_fill.yml
+          mv frontend_fill.yml frontend.yml
+
+      - name: Fill backend.yml
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_TAG: ${{ inputs.service_tag }}
+        run: |
+          cd docker-compose/services
+          envsubst < backend.yml > backend_fill.yml
+          mv backend_fill.yml backend.yml
+
+      - name: Fill certbot.yml
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+        run: |
+          cd docker-compose/services
+          envsubst < certbot.yml > certbot_fill.yml
+          mv certbot_fill.yml certbot.yml
+
+      - name: Fill default.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          cd docker-compose/proxy
+          envsubst '${DOMAIN_NAME}' < default.conf.template > default.conf_fill.template
+          mv default.conf_fill.template default.conf.template
+
+      - name: Fill default.conf.template.new
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          cd docker-compose/proxy
+          envsubst '${DOMAIN_NAME}' < default.conf.template.new > default.conf_fill.template.new
+          mv default.conf_fill.template.new default.conf.template.new
+
+      - name: Fill explorer.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          cd docker-compose/proxy
+          envsubst '${DOMAIN_NAME}' < explorer.conf.template > explorer.conf_fill.template
+          mv explorer.conf_fill.template explorer.conf.template
+
+      - name: Fill microservices.conf.template
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          cd docker-compose/proxy
+          envsubst '${DOMAIN_NAME}' < microservices.conf.template > microservices.conf_fill.template
+          mv microservices.conf_fill.template microservices.conf.template
+
+      - name: Copy Files to Server
+        run: |
+          scp -r docker-compose/* ${{ secrets.HOST_1_USERNAME }}@${{ secrets.HOST_1 }}:${{ secrets.BASE_PATH }}
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.0
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_TAG: ${{ inputs.service_tag }}
+          BASE_PATH: ${{ secrets.BASE_PATH }}
+        with:
+          host: ${{ secrets.HOST_1 }}
+          username: ${{ secrets.HOST_1_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_TAG,BASE_PATH
+          script: |
+            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_TAG BASE_PATH; do
+              if [ -z "${!var}" ]; then
+                echo "Error: Environment variable ${var} is not set."
+                exit 1
+              fi
+            done
+
+            cd "${BASE_PATH}/services" || exit 1
+
+            FRONTEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout-frontend:${SERVICE_TAG}"
+            BACKEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
+
+            sed -i "s|image: .*blockscout-frontend:.*|image: ${FRONTEND_IMAGE}|" frontend.yml
+            sed -i "s|image: .*blockscout:.*|image: ${BACKEND_IMAGE}|" backend.yml
+
+            cd "${BASE_PATH}" || exit 1
+
+            docker compose down || true
+            docker compose up --detach
