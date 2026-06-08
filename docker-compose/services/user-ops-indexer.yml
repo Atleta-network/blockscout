@@ -14,3 +14,6 @@ services:
     environment:
       - USER_OPS_INDEXER__DATABASE__CONNECT__URL=${USER_OPS_INDEXER__DATABASE__CONNECT__URL:-postgresql://blockscout:ceWb1MeLBEeOIfk65gU8EjF8@db:5432/blockscout}
       - USER_OPS_INDEXER__DATABASE__RUN_MIGRATIONS=true
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "user-ops-indexer"

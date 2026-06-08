@@ -11,5 +11,8 @@ services:
       - ./certbot/certbot.sh:/opt/certbot/certbot.sh:ro
     entrypoint: "/bin/sh -c 'trap exit TERM; sh certbot.sh; sleep 12h'"
     environment:
-      - CERTBOT_EMAIL=idquantum@gmail.com
+      - CERTBOT_EMAIL=${CERTBOT_EMAIL}
       - CERTBOT_DOMAINS=${DOMAIN_NAME}
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "certbot"

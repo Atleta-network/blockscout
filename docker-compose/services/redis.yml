@@ -7,3 +7,12 @@ services:
     command: redis-server
     volumes:
       - ./redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "redis"

@@ -9,3 +9,6 @@ services:
     container_name: 'smart-contract-verifier'
     env_file:
       -  ../envs/common-smart-contract-verifier.env
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "smart-contract-verifier"

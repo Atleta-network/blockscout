@@ -14,3 +14,6 @@ services:
       -  ../envs/common-nft-media-handler.env
     volumes:
       - ./logs/:/app/logs/
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "nft-media-handler"

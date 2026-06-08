@@ -21,20 +21,31 @@ on:
         default: main
         type: string
 
+permissions:
+  contents: read
+
+concurrency:
+  group: blockscout-build-${{ inputs.environment }}-${{ inputs.git_ref }}-${{ inputs.frontend_ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     environment: ${{ inputs.environment }}
     runs-on: self-hosted
+    timeout-minutes: 120
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.git_ref }}
+          fetch-depth: 0
 
       - name: Resolve service tag
         id: service_tag
+        shell: bash
         run: |
+          set -euo pipefail
           echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout blockscout-frontend repository
@@ -43,13 +54,17 @@ jobs:
           repository: Atleta-network/blockscout-frontend
           ref: ${{ inputs.frontend_ref }}
           path: blockscout-frontend
+          fetch-depth: 0
 
       - name: Log in to Docker Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ secrets.CI_REGISTRY }}
           username: ${{ secrets.CI_REGISTRY_USER }}
           password: ${{ secrets.CI_REGISTRY_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and push blockscout-frontend image
         uses: docker/build-push-action@v5
@@ -66,7 +81,9 @@ jobs:
 
       - name: Resolve release version
         id: release_version
+        shell: bash
         run: |
+          set -euo pipefail
           echo "value=$(grep -oE 'version: \"[^\"]+\"' mix.exs | head -n1 | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
@@ -84,10 +101,13 @@ jobs:
             BLOCKSCOUT_VERSION=${{ steps.service_tag.outputs.value }}
 
       - name: Build summary
+        shell: bash
         run: |
-          echo "Environment: ${{ inputs.environment }}"
-          echo "Backend ref: ${{ inputs.git_ref }}"
-          echo "Frontend ref: ${{ inputs.frontend_ref }}"
-          echo "Service tag: ${{ steps.service_tag.outputs.value }}"
-          echo "Frontend image: ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout-frontend:${{ steps.service_tag.outputs.value }}"
-          echo "Backend image: ${{ secrets.CI_REGISTRY }}/${{ secrets.CI_REGISTRY_REPO }}/blockscout:${{ steps.service_tag.outputs.value }}"
+          {
+            echo "## Blockscout images"
+            echo
+            echo "- Environment: \`${{ inputs.environment }}\`"
+            echo "- Backend ref: \`${{ inputs.git_ref }}\`"
+            echo "- Frontend ref: \`${{ inputs.frontend_ref }}\`"
+            echo "- Service tag: \`${{ steps.service_tag.outputs.value }}\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

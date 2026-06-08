@@ -7,3 +7,6 @@ services:
     platform: linux/amd64
     restart: always
     container_name: 'sig-provider'
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "sig-provider"

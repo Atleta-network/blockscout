@@ -9,3 +9,6 @@ services:
     container_name: 'visualizer'
     env_file:
       -  ../envs/common-visualizer.env
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "visualizer"

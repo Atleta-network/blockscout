@@ -20,10 +20,18 @@ on:
         default: main
         type: string
 
+permissions:
+  contents: read
+
+concurrency:
+  group: blockscout-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
 jobs:
   deploy:
     environment: ${{ inputs.environment }}
     runs-on: self-hosted
+    timeout-minutes: 45
 
     steps:
       - name: Checkout Repository
@@ -31,29 +39,46 @@ jobs:
         with:
           ref: ${{ inputs.git_ref }}
 
-      - name: Validate service tag
+      - name: Validate inputs
+        shell: bash
         run: |
+          set -euo pipefail
           if [ -z "${{ inputs.service_tag }}" ]; then
-            echo "service_tag is required"
+            echo "service_tag is required" >&2
             exit 1
           fi
 
       - name: Install system dependencies
+        shell: bash
         run: |
-          sudo apt-get install gettext
+          set -euo pipefail
+          if ! command -v envsubst >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y gettext-base
+          fi
 
       - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh/
-          touch ~/.ssh/known_hosts
-          ssh-keyscan ${{ secrets.HOST_1 }} >> ~/.ssh/known_hosts
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          eval $(ssh-agent)
-
-      - name: Fill common-frontend.env
+        shell: bash
         env:
+          HOST_1: ${{ secrets.HOST_1 }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          touch ~/.ssh/known_hosts
+          ssh-keyscan -H "${HOST_1}" >> ~/.ssh/known_hosts
+          printf "%s\n" "${SSH_PRIVATE_KEY}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Render compose bundle
+        shell: bash
+        env:
+          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
+          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
+          SERVICE_TAG: ${{ inputs.service_tag }}
+          BACKEND_VERSION: ${{ vars.BACKEND_VERSION }}
           DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
           IS_TESTNET: ${{ vars.IS_TESTNET }}
           NETWORK_NAME: ${{ vars.NETWORK_NAME }}
           NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
@@ -61,142 +86,141 @@ jobs:
           NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
           NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
           NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID }}
-          PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
-        run: |
-          cd docker-compose/envs
-          envsubst < common-frontend.env > common-frontend_fill.env
-          mv common-frontend_fill.env common-frontend.env
-
-      - name: Fill common-blockscout.env
-        env:
-          NETWORK_NAME: ${{ vars.NETWORK_NAME }}
-          NETWORK_SHORT_NAME: ${{ vars.NETWORK_SHORT_NAME }}
-          NETWORK_CHAIN_ID: ${{ vars.NETWORK_CHAIN_ID }}
-          NETWORK_CURRENCY_NAME: ${{ vars.NETWORK_CURRENCY_NAME }}
-          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
           PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
           PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
+          WALLETCONNECT: ${{ secrets.WALLETCONNECT }}
         run: |
-          cd docker-compose/envs
-          envsubst < common-blockscout.env > common-blockscout_fill.env
-          mv common-blockscout_fill.env common-blockscout.env
+          .github/scripts/render-compose.sh
 
-      - name: Fill common-user-ops-indexer.env
+      - name: Copy files to server
+        shell: bash
         env:
-          PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
+          HOST_1: ${{ secrets.HOST_1 }}
+          HOST_1_USERNAME: ${{ secrets.HOST_1_USERNAME }}
+          BASE_PATH: ${{ secrets.BASE_PATH }}
         run: |
-          cd docker-compose/envs
-          envsubst < common-user-ops-indexer.env > common-user-ops-indexer_fill.env
-          mv common-user-ops-indexer_fill.env common-user-ops-indexer.env
-
-      - name: Fill common-stats.env
-        env:
-          NETWORK_CURRENCY_SYMBOL: ${{ vars.NETWORK_CURRENCY_SYMBOL }}
-        run: |
-          cd docker-compose/envs
-          envsubst < common-stats.env > common-stats_fill.env
-          mv common-stats_fill.env common-stats.env
-
-      - name: Fill verification key
-        run: |
-          cd docker-compose/services
-          mkdir .well-known
-          echo ${{ secrets.WALLETCONNECT }} > ./.well-known/walletconnect.txt
-
-      - name: Fill frontend.yml
-        env:
-          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
-          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-          SERVICE_TAG: ${{ inputs.service_tag }}
-        run: |
-          cd docker-compose/services
-          envsubst < frontend.yml > frontend_fill.yml
-          mv frontend_fill.yml frontend.yml
-
-      - name: Fill backend.yml
-        env:
-          CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
-          CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
-          SERVICE_TAG: ${{ inputs.service_tag }}
-        run: |
-          cd docker-compose/services
-          envsubst < backend.yml > backend_fill.yml
-          mv backend_fill.yml backend.yml
-
-      - name: Fill certbot.yml
-        env:
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
-        run: |
-          cd docker-compose/services
-          envsubst < certbot.yml > certbot_fill.yml
-          mv certbot_fill.yml certbot.yml
-
-      - name: Fill default.conf.template
-        env:
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-        run: |
-          cd docker-compose/proxy
-          envsubst '${DOMAIN_NAME}' < default.conf.template > default.conf_fill.template
-          mv default.conf_fill.template default.conf.template
-
-      - name: Fill default.conf.template.new
-        env:
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-        run: |
-          cd docker-compose/proxy
-          envsubst '${DOMAIN_NAME}' < default.conf.template.new > default.conf_fill.template.new
-          mv default.conf_fill.template.new default.conf.template.new
-
-      - name: Fill explorer.conf.template
-        env:
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-        run: |
-          cd docker-compose/proxy
-          envsubst '${DOMAIN_NAME}' < explorer.conf.template > explorer.conf_fill.template
-          mv explorer.conf_fill.template explorer.conf.template
-
-      - name: Fill microservices.conf.template
-        env:
-          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
-        run: |
-          cd docker-compose/proxy
-          envsubst '${DOMAIN_NAME}' < microservices.conf.template > microservices.conf_fill.template
-          mv microservices.conf_fill.template microservices.conf.template
-
-      - name: Copy Files to Server
-        run: |
-          scp -r docker-compose/* ${{ secrets.HOST_1_USERNAME }}@${{ secrets.HOST_1 }}:${{ secrets.BASE_PATH }}
+          set -euo pipefail
+          target="${HOST_1_USERNAME}@${HOST_1}"
+          ssh -o BatchMode=yes "${target}" "mkdir -p '${BASE_PATH}'"
+          scp -r docker-compose/. "${target}:${BASE_PATH}/"
 
       - name: Deploy
-        uses: appleboy/ssh-action@v1.0.0
+        shell: bash
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
           CI_REGISTRY_REPO: ${{ secrets.CI_REGISTRY_REPO }}
           SERVICE_TAG: ${{ inputs.service_tag }}
           BASE_PATH: ${{ secrets.BASE_PATH }}
-        with:
-          host: ${{ secrets.HOST_1 }}
-          username: ${{ secrets.HOST_1_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: CI_REGISTRY,CI_REGISTRY_REPO,SERVICE_TAG,BASE_PATH
-          script: |
-            for var in CI_REGISTRY CI_REGISTRY_REPO SERVICE_TAG BASE_PATH; do
-              if [ -z "${!var}" ]; then
-                echo "Error: Environment variable ${var} is not set."
-                exit 1
+          HOST_1: ${{ secrets.HOST_1 }}
+          HOST_1_USERNAME: ${{ secrets.HOST_1_USERNAME }}
+        run: |
+          set -euo pipefail
+
+          target="${HOST_1_USERNAME}@${HOST_1}"
+          remote_env=(
+            "CI_REGISTRY=$(printf '%q' "${CI_REGISTRY}")"
+            "CI_REGISTRY_REPO=$(printf '%q' "${CI_REGISTRY_REPO}")"
+            "SERVICE_TAG=$(printf '%q' "${SERVICE_TAG}")"
+            "BASE_PATH=$(printf '%q' "${BASE_PATH}")"
+          )
+
+          ssh -o BatchMode=yes "${target}" "${remote_env[*]} bash -se" <<'REMOTE'
+          set -Eeuo pipefail
+
+          required_vars=(CI_REGISTRY CI_REGISTRY_REPO SERVICE_TAG BASE_PATH)
+          for var in "${required_vars[@]}"; do
+            if [ -z "${!var:-}" ]; then
+              echo "Required variable ${var} is not set" >&2
+              exit 1
+            fi
+          done
+
+          lock_name="$(printf "%s" "${BASE_PATH}" | tr -cs 'A-Za-z0-9_.-' '_')"
+          lock_file="/tmp/blockscout-deploy-${lock_name}.lock"
+
+          run_deploy() {
+            cd "${BASE_PATH}"
+
+            frontend_image="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout-frontend:${SERVICE_TAG}"
+            backend_image="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
+
+            sed -i "s|image: .*blockscout-frontend:.*|image: ${frontend_image}|" services/frontend.yml
+            sed -i "s|image: .*blockscout:.*|image: ${backend_image}|" services/backend.yml
+
+            docker compose config --quiet
+            docker compose pull
+            docker compose up --detach --remove-orphans
+
+            wait_for_containers
+            docker exec proxy nginx -t
+            docker exec backend curl -fsS --max-time 10 http://127.0.0.1:4000/api/v2/config >/dev/null
+          }
+
+          wait_for_containers() {
+            local containers=(
+              db
+              redis-db
+              backend
+              frontend
+              stats-db
+              stats
+              visualizer
+              sig-provider
+              user-ops-indexer
+              proxy
+              certbot
+            )
+
+            for attempt in $(seq 1 60); do
+              local failed=0
+              for container in "${containers[@]}"; do
+                if ! docker inspect "${container}" >/dev/null 2>&1; then
+                  failed=1
+                  break
+                fi
+
+                state="$(docker inspect -f '{{.State.Status}}' "${container}")"
+                health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container}")"
+
+                if [ "${state}" != "running" ]; then
+                  failed=1
+                  break
+                fi
+
+                if [ "${health}" != "none" ] && [ "${health}" != "healthy" ]; then
+                  failed=1
+                  break
+                fi
+              done
+
+              if [ "${failed}" -eq 0 ]; then
+                return 0
               fi
+
+              sleep 5
             done
 
-            cd "${BASE_PATH}/services" || exit 1
+            echo "Containers did not become healthy in time" >&2
+            docker compose ps || true
+            docker compose logs --tail=200 backend frontend proxy stats user-ops-indexer || true
+            return 1
+          }
 
-            FRONTEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout-frontend:${SERVICE_TAG}"
-            BACKEND_IMAGE="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
+          if command -v flock >/dev/null 2>&1; then
+            export -f run_deploy wait_for_containers
+            flock -w 900 "${lock_file}" bash -c run_deploy
+          else
+            run_deploy
+          fi
+          REMOTE
 
-            sed -i "s|image: .*blockscout-frontend:.*|image: ${FRONTEND_IMAGE}|" frontend.yml
-            sed -i "s|image: .*blockscout:.*|image: ${BACKEND_IMAGE}|" backend.yml
-
-            cd "${BASE_PATH}" || exit 1
-
-            docker compose down || true
-            docker compose up --detach
+      - name: Deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Blockscout deploy"
+            echo
+            echo "- Environment: \`${{ inputs.environment }}\`"
+            echo "- Template ref: \`${{ inputs.git_ref }}\`"
+            echo "- Service tag: \`${{ inputs.service_tag }}\`"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -33,6 +33,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "stats-db"
 
   stats:
     image: ghcr.io/blockscout/stats:${STATS_DOCKER_TAG:-v2.12.0}
@@ -49,3 +52,6 @@ services:
       - STATS__BLOCKSCOUT_DB_URL=${STATS__BLOCKSCOUT_DB_URL:-postgresql://blockscout:ceWb1MeLBEeOIfk65gU8EjF8@db:5432/blockscout}
       - STATS__CREATE_DATABASE=${STATS__CREATE_DATABASE:-true}
       - STATS__RUN_MIGRATIONS=${STATS__RUN_MIGRATIONS:-true}
+    labels:
+      com.atleta.role: "blockscout"
+      com.atleta.service: "stats"

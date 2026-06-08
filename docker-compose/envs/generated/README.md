@@ -11,7 +11,6 @@ How these files were produced:
 
 Important placeholders to fill manually:
 
-- `PUB_RPC_NAME`
 - `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID`
 
 Optional frontend feature flags/envs (account auth, rollup, name services, interchain API) are intentionally omitted by default.
