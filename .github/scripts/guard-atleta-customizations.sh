@@ -36,8 +36,8 @@ require_file ".github/workflows/build-images.yml"
 require_file ".github/workflows/deploy.yml"
 
 require_pattern ".github/workflows/build-images.yml" "Atleta-network/blockscout-frontend" "Atleta frontend repository checkout"
-require_pattern ".github/workflows/build-images.yml" "docker/login-action@v3" "current Docker registry login action"
-require_pattern ".github/workflows/build-images.yml" "docker/setup-buildx-action@v3" "Buildx setup"
+require_pattern ".github/workflows/build-images.yml" "docker/login-action@v4" "current Docker registry login action"
+require_pattern ".github/workflows/build-images.yml" "docker/setup-buildx-action@v4" "Buildx setup"
 require_pattern ".github/workflows/build-images.yml" "blockscout-frontend:\\$\\{\\{ steps\\.service_tag\\.outputs\\.value \\}\\}" "commit-SHA frontend image tag"
 require_pattern ".github/workflows/build-images.yml" "blockscout:\\$\\{\\{ steps\\.service_tag\\.outputs\\.value \\}\\}" "commit-SHA backend image tag"
 
@@ -46,7 +46,7 @@ require_pattern ".github/workflows/deploy.yml" "render-compose\\.sh" "compose re
 require_pattern ".github/workflows/deploy.yml" "docker compose config --quiet" "compose validation"
 require_pattern ".github/workflows/deploy.yml" "docker compose up --detach --remove-orphans" "non-destructive compose up"
 require_pattern ".github/workflows/deploy.yml" "flock -w 900" "remote deploy lock"
-require_pattern ".github/workflows/deploy.yml" "/api/v2/config" "backend post-deploy API check"
+require_pattern ".github/workflows/deploy.yml" "/api/health/liveness" "backend post-deploy API check"
 reject_pattern ".github/workflows/deploy.yml" "docker compose down" "destructive compose down"
 
 require_pattern ".github/scripts/render-compose.sh" "required_vars=\\(" "strict render required variables"
@@ -64,6 +64,9 @@ require_pattern "docker-compose/services/nginx.yml" "healthcheck:" "nginx health
 require_pattern "docker-compose/services/redis.yml" "healthcheck:" "redis healthcheck"
 require_pattern "docker-compose/services/db.yml" "pg_isready -U blockscout -d blockscout" "Blockscout DB healthcheck"
 require_pattern "docker-compose/services/stats.yml" "pg_isready -U stats -d stats" "stats DB healthcheck"
+require_pattern "docker-compose/services/db.yml" "image: postgres:17-bookworm" "Blockscout DB image pinned to bookworm (glibc collation)"
+require_pattern "docker-compose/services/stats.yml" "image: postgres:17-bookworm" "stats DB image pinned to bookworm (glibc collation)"
+require_pattern "docker-compose/services/nginx.yml" "image: nginx:1.31.8-alpine3.24-slim" "pinned nginx proxy image"
 require_pattern "docker-compose/services/certbot.yml" "CERTBOT_EMAIL=\\$\\{CERTBOT_EMAIL\\}" "environment-driven certbot email"
 
 services=(
