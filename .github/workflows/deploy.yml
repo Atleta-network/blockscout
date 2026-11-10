@@ -158,6 +158,7 @@ jobs:
 
             wait_for_containers
             docker exec proxy nginx -t
+            docker exec proxy nginx -s reload
             docker exec backend curl -fsS --max-time 10 http://127.0.0.1:4000/api/health/liveness >/dev/null
           }
 

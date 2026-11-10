@@ -20,6 +20,11 @@ on:
         required: true
         default: main
         type: string
+      frontend_only:
+        description: Build only the frontend image
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -80,6 +85,7 @@ jobs:
             GIT_TAG=develop
 
       - name: Resolve release version
+        if: ${{ !inputs.frontend_only }}
         id: release_version
         shell: bash
         run: |
@@ -87,6 +93,7 @@ jobs:
           echo "value=$(grep -oE 'version: \"[^\"]+\"' mix.exs | head -n1 | cut -d'\"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push backend image
+        if: ${{ !inputs.frontend_only }}
         uses: docker/build-push-action@v7
         with:
           context: .
