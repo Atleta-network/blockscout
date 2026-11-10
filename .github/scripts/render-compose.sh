@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+umask 077
 
 required_vars=(
   CI_REGISTRY
@@ -18,6 +19,10 @@ required_vars=(
   PRIV_RPC_NAME
   PUB_RPC_NAME
   WALLETCONNECT
+  BLOCKSCOUT_DB_PASSWORD
+  BLOCKSCOUT_STATS_DB_PASSWORD
+  BLOCKSCOUT_SECRET_KEY_BASE
+  BLOCKSCOUT_RELEASE_COOKIE
 )
 
 for var in "${required_vars[@]}"; do
@@ -43,6 +48,21 @@ render_file() {
 }
 
 cd docker-compose
+
+# Keep environment-specific credentials in the deployment environment, never in Git.
+# Hex credentials are deliberately URL-safe; reject ambiguous values before forming DSNs.
+for var in BLOCKSCOUT_DB_PASSWORD BLOCKSCOUT_STATS_DB_PASSWORD; do
+  [[ "${!var}" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "${var} must be URL-safe" >&2; exit 1; }
+done
+export STATS__DB_URL="postgres://stats:${BLOCKSCOUT_STATS_DB_PASSWORD}@stats-db:5432/stats"
+export STATS__BLOCKSCOUT_DB_URL="postgresql://blockscout:${BLOCKSCOUT_DB_PASSWORD}@db:5432/blockscout"
+export USER_OPS_INDEXER__DATABASE__CONNECT__URL="${STATS__BLOCKSCOUT_DB_URL}"
+printf '%s\n' \
+  "BLOCKSCOUT_DB_PASSWORD=${BLOCKSCOUT_DB_PASSWORD}" \
+  "BLOCKSCOUT_STATS_DB_PASSWORD=${BLOCKSCOUT_STATS_DB_PASSWORD}" \
+  "STATS__DB_URL=${STATS__DB_URL}" \
+  "STATS__BLOCKSCOUT_DB_URL=${STATS__BLOCKSCOUT_DB_URL}" \
+  "USER_OPS_INDEXER__DATABASE__CONNECT__URL=${USER_OPS_INDEXER__DATABASE__CONNECT__URL}" > .env
 
 render_file envs/common-frontend.env
 render_file envs/common-blockscout.env

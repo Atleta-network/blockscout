@@ -1,0 +1,19 @@
+name: Validate deployment bundle
+on:
+  push:
+    branches: [main]
+    paths: ['docker-compose/**', '.github/scripts/**', '.github/workflows/**']
+  pull_request:
+    paths: ['docker-compose/**', '.github/scripts/**', '.github/workflows/**']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate deployment customizations
+        run: bash .github/scripts/guard-atleta-customizations.sh
+      - name: Verify credential rendering without real secrets
+        run: python3 .github/scripts/test-deployment-secrets.py

@@ -89,6 +89,10 @@ jobs:
           PRIV_RPC_NAME: ${{ vars.PRIV_RPC_NAME }}
           PUB_RPC_NAME: ${{ vars.PUB_RPC_NAME }}
           WALLETCONNECT: ${{ secrets.WALLETCONNECT }}
+          BLOCKSCOUT_DB_PASSWORD: ${{ secrets.BLOCKSCOUT_DB_PASSWORD }}
+          BLOCKSCOUT_STATS_DB_PASSWORD: ${{ secrets.BLOCKSCOUT_STATS_DB_PASSWORD }}
+          BLOCKSCOUT_SECRET_KEY_BASE: ${{ secrets.BLOCKSCOUT_SECRET_KEY_BASE }}
+          BLOCKSCOUT_RELEASE_COOKIE: ${{ secrets.BLOCKSCOUT_RELEASE_COOKIE }}
         run: |
           .github/scripts/render-compose.sh
 
@@ -147,6 +151,7 @@ jobs:
             sed -i "s|image: .*blockscout-frontend:.*|image: ${frontend_image}|" services/frontend.yml
             sed -i "s|image: .*blockscout:.*|image: ${backend_image}|" services/backend.yml
 
+            chmod 600 .env envs/common-blockscout.env envs/common-stats.env envs/common-user-ops-indexer.env
             docker compose config --quiet
             docker compose pull
             docker compose up --detach --remove-orphans
