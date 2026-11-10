@@ -4,6 +4,7 @@ services:
   redis-db:
     image: 'redis:alpine'
     container_name: redis-db
+    restart: unless-stopped
     command: redis-server
     volumes:
       - ./redis-data:/data
