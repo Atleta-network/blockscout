@@ -112,8 +112,8 @@ jobs:
 
           (
             cd "${tmpdir}"
-            CI_REGISTRY=registry.atleta.network \
-            CI_REGISTRY_REPO=atleta-docker \
+            CI_REGISTRY=registry.moneyfactory.io \
+            CI_REGISTRY_REPO=atleta \
             SERVICE_TAG="${{ github.sha }}" \
             BACKEND_VERSION=10.2.3 \
             DOMAIN_NAME=blockscout.testnet-v2.atleta.network \
