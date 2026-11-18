@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -17,3 +17,7 @@ jobs:
         run: bash .github/scripts/guard-atleta-customizations.sh
       - name: Verify credential rendering without real secrets
         run: python3 .github/scripts/test-deployment-secrets.py
+      - name: Verify native database TLS boundary and preservation
+        run: python3 .github/scripts/test-native-db-tls.py
+      - name: Verify isolated upload and shared deployment transaction
+        run: python3 .github/scripts/test-deployment-transaction.py
