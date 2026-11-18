@@ -263,7 +263,7 @@ def apply(environment, service):
                 raise RuntimeError("The Compose patch changes an unrelated database setting")
         if before_model["volumes"] != [v for v in after_model["volumes"] if v["target"] not in ["/run/db-tls", "/run/db-access"]]:
             raise RuntimeError("The original PostgreSQL data mounts changed")
-        run(command + ["up", "--detach", "--no-deps", "--pull", "never", service])
+        run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service])
         for _ in range(60):
             fresh = inspect(service)
             if fresh["State"]["Running"] and fresh["State"].get("Health", {}).get("Status") == "healthy":
@@ -287,7 +287,7 @@ def apply(environment, service):
             raise RuntimeError("Unexpected PostgreSQL image or original mount change")
     except Exception:
         atomic(private, previous, stat.st_mode & 0o777, stat.st_uid, stat.st_gid)
-        run(command + ["up", "--detach", "--no-deps", "--pull", "never", service])
+        run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service])
         for _ in range(60):
             restored = inspect(service)
             if restored["State"]["Running"] and restored["State"].get("Health", {}).get("Status") == "healthy":
