@@ -109,6 +109,24 @@ def sql(service, query):
     return text.splitlines()[-1]
 
 
+def require_live_baseline(model, container):
+    """Refuse existing Compose drift before touching a running database."""
+    mounts = sorted((v["source"], v["target"], v["type"], not v.get("read_only", False)) for v in model.get("volumes", []))
+    actual = sorted((v["Source"], v["Destination"], v["Type"], v["RW"]) for v in container["Mounts"])
+    env = dict(value.split("=", 1) for value in container["Config"].get("Env", []) if "=" in value)
+    if mounts != actual or model.get("command") != container["Config"]["Cmd"] or str(model.get("user")) != container["Config"].get("User"):
+        raise RuntimeError("Existing Compose mounts/command/user drift from the running database")
+    if any(str(value) != env.get(key) for key, value in model.get("environment", {}).items()):
+        raise RuntimeError("Existing Compose environment differs from the running database")
+    expected_ports = {}
+    for port in model.get("ports", []):
+        key = str(port["target"]) + "/" + port.get("protocol", "tcp")
+        expected_ports.setdefault(key, []).append((port.get("host_ip", ""), str(port["published"])))
+    actual_ports = {key: [(entry["HostIp"], entry["HostPort"]) for entry in values] for key, values in container["HostConfig"].get("PortBindings", {}).items()}
+    if expected_ports != actual_ports:
+        raise RuntimeError("Existing Compose public port binding differs from the running database")
+
+
 def fixture(image, hba_directory):
     name = "blockscout-tls-check-" + os.urandom(6).hex()
     try:
@@ -220,7 +238,12 @@ def apply(environment, service):
     atomic(backup / p["file"], previous, 0o600, 0, 0)
     command = ["docker", "compose", "--project-directory", "/blockscout", "-f", "/blockscout/docker-compose.yml"]
     before_model = json.loads(run(command + ["config", "--format", "json"]))["services"][service]
+    require_live_baseline(before_model, old)
     env = dict(v.split("=", 1) for v in old["Config"].get("Env", []) if "=" in v)
+    internal_ip = next(iter(old["NetworkSettings"]["Networks"].values()))["IPAddress"]
+    internal_dsn = f"host={internal_ip} user={p['user']} dbname={p['database']} sslmode=disable connect_timeout=8"
+    if run(["docker", "exec", "--env", "PGPASSWORD", service, "psql", "-XtA", internal_dsn, "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"], env={**os.environ, "PGPASSWORD": env["POSTGRES_PASSWORD"]}) != "1":
+        raise RuntimeError("The existing password must work with internal SCRAM before restart")
     try:
         atomic(private, candidate.encode(), stat.st_mode & 0o777, stat.st_uid, stat.st_gid)
         after_model = json.loads(run(command + ["config", "--format", "json"]))["services"][service]
@@ -238,6 +261,10 @@ def apply(environment, service):
         else:
             raise RuntimeError("PostgreSQL did not become healthy after the controlled restart")
         verify(environment, service, old["Image"], env["POSTGRES_PASSWORD"], identity)
+        fresh_ip = next(iter(fresh["NetworkSettings"]["Networks"].values()))["IPAddress"]
+        dsn = internal_dsn.replace("host=" + internal_ip + " ", "host=" + fresh_ip + " ")
+        if run(["docker", "exec", "--env", "PGPASSWORD", service, "psql", "-XtA", dsn, "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"], env={**os.environ, "PGPASSWORD": env["POSTGRES_PASSWORD"]}) != "1":
+            raise RuntimeError("Internal plaintext SCRAM must continue working")
         if sql(service, "SELECT md5(string_agg(rolname||':'||coalesce(rolpassword,''),',' ORDER BY rolname)) FROM pg_authid WHERE rolcanlogin;") != roles_before:
             raise RuntimeError("Database roles/password verifier material changed")
         if any(inspect(name)["Id"] != value for name, value in other_ids.items()):
@@ -250,6 +277,16 @@ def apply(environment, service):
     except Exception:
         atomic(private, previous, stat.st_mode & 0o777, stat.st_uid, stat.st_gid)
         run(command + ["up", "--detach", "--no-deps", "--pull", "never", service])
+        for _ in range(60):
+            restored = inspect(service)
+            if restored["State"]["Running"] and restored["State"].get("Health", {}).get("Status") == "healthy":
+                if sql(service, "SELECT system_identifier FROM pg_control_system();") != identity:
+                    raise RuntimeError("Rollback returned a different PostgreSQL data cluster")
+                require_live_baseline(before_model, restored)
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError("Rollback did not restore a healthy PostgreSQL instance")
         raise
     return {"environment": environment, "service": service, "port": p["port"], "old_id": old["Id"], "new_id": fresh["Id"],
         "image_unchanged": True, "data_identity_unchanged": True, "passwords_unchanged": True, "other_container_ids_unchanged": True,

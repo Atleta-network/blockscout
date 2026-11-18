@@ -32,6 +32,17 @@ class NativeTLS(unittest.TestCase):
         self.assertIn('./original-data:/var/lib/postgresql/data', result); self.assertIn('"max_connections=300"', result)
         self.assertIn('/etc/db-access/tls/blockscout-db:/run/db-tls:ro', result)
         with self.assertRaises(RuntimeError): tls.patch_service(result, 'db', ['postgres'])
+    def test_drift_is_rejected_before_database_recreation(self):
+        model={'volumes':[{'source':'/original','target':'/data','type':'bind'}], 'command':['postgres'], 'user':'2000:2000','environment':{'POSTGRES_PASSWORD':'fixture'},'ports':[{'target':5432,'published':'7432','protocol':'tcp'}]}
+        container={'Mounts':[{'Source':'/original','Destination':'/data','Type':'bind','RW':True}],'Config':{'Cmd':['postgres'],'User':'2000:2000','Env':['POSTGRES_PASSWORD=fixture']},'HostConfig':{'PortBindings':{'5432/tcp':[{'HostIp':'','HostPort':'7432'}]}}}
+        tls.require_live_baseline(model,container)
+        for changed in [('source','/different'),('read_only',True)]:
+            original=dict(model['volumes'][0]);model['volumes'][0][changed[0]]=changed[1]
+            with self.assertRaises(RuntimeError): tls.require_live_baseline(model,container)
+            model['volumes'][0]=original
+        model['environment']['POSTGRES_PASSWORD']='different'
+        with self.assertRaises(RuntimeError): tls.require_live_baseline(model,container)
+
     def test_source_services_keep_tls_after_deploy(self):
         root = HERE.parents[1] / 'docker-compose/services'
         for name, service in [('db.yml', 'db'), ('stats.yml', 'stats-db')]:
