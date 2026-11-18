@@ -63,6 +63,15 @@ def build_hba(original, networks):
     pattern = r"(?m)^\s*host\s+all\s+all\s+all\s+scram-sha-256\s*(?:#[^\n]*)?$"
     if len(re.findall(pattern, original)) != 1:
         raise RuntimeError("The existing HBA is not the reviewed baseline")
+    for line in original.splitlines():
+        fields = line.split("#", 1)[0].split()
+        if not fields:
+            continue
+        allowed = fields in [["local", "all", "all", "trust"], ["local", "replication", "all", "trust"],
+                             ["host", "all", "all", "all", "scram-sha-256"]]
+        allowed |= len(fields) == 5 and fields[0] == "host" and fields[1] in ["all", "replication"] and fields[2] == "all" and fields[3] in ["127.0.0.1/32", "::1/128"] and fields[4] == "trust"
+        if not allowed:
+            raise RuntimeError("The existing HBA contains an unreviewed rule")
     lines = ["# Native public TLS; preserve existing local administration and local project SCRAM."]
     if not networks:
         raise RuntimeError("No verified Docker network boundary")
@@ -239,6 +248,8 @@ def apply(environment, service):
     command = ["docker", "compose", "--project-directory", "/blockscout", "-f", "/blockscout/docker-compose.yml"]
     before_model = json.loads(run(command + ["config", "--format", "json"]))["services"][service]
     require_live_baseline(before_model, old)
+    if json.loads(run(["docker", "image", "inspect", before_model["image"]]))[0]["Id"] != old["Image"]:
+        raise RuntimeError("The rollback image tag differs from the running PostgreSQL binary")
     env = dict(v.split("=", 1) for v in old["Config"].get("Env", []) if "=" in v)
     internal_ip = next(iter(old["NetworkSettings"]["Networks"].values()))["IPAddress"]
     internal_dsn = f"host={internal_ip} user={p['user']} dbname={p['database']} sslmode=disable connect_timeout=8"
@@ -283,6 +294,8 @@ def apply(environment, service):
                 if sql(service, "SELECT system_identifier FROM pg_control_system();") != identity:
                     raise RuntimeError("Rollback returned a different PostgreSQL data cluster")
                 require_live_baseline(before_model, restored)
+                if restored["Image"] != old["Image"]:
+                    raise RuntimeError("Rollback did not restore the original PostgreSQL image")
                 break
             time.sleep(1)
         else:

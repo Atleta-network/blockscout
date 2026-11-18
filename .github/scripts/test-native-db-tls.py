@@ -22,7 +22,7 @@ class NativeTLS(unittest.TestCase):
         for networks in [[], [('0.0.0.0/0', '1.1.1.1')], [('172.19.0.0/16', '172.20.0.1')], [('127.0.0.0/8', '127.0.0.1')]]:
             with self.subTest(networks=networks), self.assertRaises(RuntimeError): tls.build_hba(BASE, networks)
     def test_unreviewed_hba_refused(self):
-        for baseline in [BASE + 'host all all all scram-sha-256\n', BASE.replace('scram-sha-256', 'md5')]:
+        for baseline in [BASE + 'host all all all scram-sha-256\n', BASE.replace('scram-sha-256', 'md5'), BASE + 'host all all 10.0.0.0/8 trust\n']:
             with self.assertRaises(RuntimeError): tls.build_hba(baseline, [('172.19.0.0/16', '172.19.0.1')])
     def test_patch_preserves_private_content_and_other_services(self):
         text = "services:\n  db-init:\n    image: postgres:17-bookworm\n  db:\n    image: postgres:17-bookworm\n    command: postgres -c max_connections=300\n    environment:\n      POSTGRES_PASSWORD: 'fixture-literal-$-with:punctuation'\n    volumes:\n      - ./original-data:/var/lib/postgresql/data\n  sibling:\n    image: original\n"
