@@ -5,6 +5,8 @@ Only a named database service is recreated. Runtime password-bearing service
 files and snapshots remain on the server; no role, password or data is changed.
 """
 import argparse
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import ipaddress
 import json
@@ -13,6 +15,7 @@ from pathlib import Path
 import re
 import socket
 import ssl
+import stat
 import struct
 import subprocess
 import tempfile
@@ -25,6 +28,73 @@ SERVICES = {"db": {"user": "blockscout", "database": "blockscout", "port": 7432,
 ENVIRONMENTS = {"testnet_v2": {"address": "23.162.152.177", "domain": "blockscout.testnet-v2.atleta.network"},
                 "mainnet": {"address": "186.190.215.128", "domain": "blockscout.atleta.network"}}
 STAGE = "preflight"
+
+
+def deployment_lock_path(base):
+    canonical = str(Path(base).resolve(strict=True))
+    if canonical == "/":
+        raise RuntimeError("A dedicated deployment directory is required")
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", canonical)
+    # `tr -cs ... '_'` also squeezes underscores already present in the path.
+    name = re.sub(r"_+", "_", name)
+    return Path("/tmp") / ("blockscout-deploy-" + name + ".lock")
+
+
+@contextmanager
+def deployment_lock(base, timeout=900):
+    # Same canonical path and flock as CI. Use the existing private Compose
+    # owner's identity so a root cutover does not block the non-root deployer.
+    path = deployment_lock_path(base)
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+    try:
+        descriptor = os.open(path, flags)
+    except FileNotFoundError:
+        try:
+            descriptor = os.open(path, flags | os.O_CREAT | os.O_EXCL, 0o660)
+        except FileExistsError:
+            descriptor = os.open(path, flags)
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size:
+            raise RuntimeError("Unexpected deployment lock file")
+        owner_path = Path(base) / "services/db.yml"
+        if owner_path.is_symlink():
+            raise RuntimeError("Unexpected private Compose symlink")
+        owner = (owner_path if owner_path.is_file() else Path(base)).stat()
+        if (metadata.st_uid, metadata.st_gid) != (owner.st_uid, owner.st_gid):
+            os.fchown(descriptor, owner.st_uid, owner.st_gid)
+        os.fchmod(descriptor, 0o660)
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Timed out waiting for the deployment lock") from None
+                time.sleep(0.2)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+@contextmanager
+def compose_transaction(private, previous, candidate, metadata, rollback):
+    """Restore the file on any failure; recreate only if recreation was attempted."""
+    recreation_attempted = False
+
+    def begin_recreation():
+        nonlocal recreation_attempted
+        recreation_attempted = True
+
+    try:
+        atomic(private, candidate, metadata.st_mode & 0o777, metadata.st_uid, metadata.st_gid)
+        yield begin_recreation
+    except Exception:
+        atomic(private, previous, metadata.st_mode & 0o777, metadata.st_uid, metadata.st_gid)
+        if recreation_attempted:
+            rollback()
+        raise
 
 
 def run(argv, env=None, timeout=75):
@@ -119,6 +189,37 @@ def sql(service, query):
     return text.splitlines()[-1]
 
 
+def roles_fingerprint(service):
+    return sql(service, "SELECT md5(string_agg(rolname||':'||coalesce(rolpassword,''),',' ORDER BY rolname)) FROM pg_authid WHERE rolcanlogin;")
+
+
+def verify_internal_password(service, address, credential):
+    p = SERVICES[service]
+    dsn = f"host={address} user={p['user']} dbname={p['database']} sslmode=disable connect_timeout=8"
+    if run(["docker", "exec", "--env", "PGPASSWORD", service, "psql", "-XtA", dsn,
+            "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"], env={**os.environ, "PGPASSWORD": credential}) != "1":
+        raise RuntimeError("The existing password did not pass internal SCRAM")
+
+
+def rollback_database(command, service, before_model, old_image, identity, roles_before, credential):
+    run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service], timeout=180)
+    for _ in range(60):
+        restored = inspect(service)
+        if restored["State"]["Running"] and restored["State"].get("Health", {}).get("Status") == "healthy":
+            if sql(service, "SELECT system_identifier FROM pg_control_system();") != identity:
+                raise RuntimeError("Rollback returned a different PostgreSQL data cluster")
+            require_live_baseline(before_model, restored)
+            if restored["Image"] != old_image:
+                raise RuntimeError("Rollback did not restore the original PostgreSQL image")
+            address = next(iter(restored["NetworkSettings"]["Networks"].values()))["IPAddress"]
+            verify_internal_password(service, address, credential)
+            if roles_fingerprint(service) != roles_before:
+                raise RuntimeError("Rollback did not preserve the original roles/password verifiers")
+            return
+        time.sleep(1)
+    raise RuntimeError("Rollback did not restore a healthy PostgreSQL instance")
+
+
 def require_live_baseline(model, container):
     """Refuse existing Compose drift before touching a running database."""
     mounts = sorted((v["source"], v["target"], v["type"], not v.get("read_only", False)) for v in model.get("volumes", []))
@@ -211,6 +312,11 @@ def verify(environment, service, image, credential, system_identifier):
 
 
 def apply(environment, service):
+    with deployment_lock("/blockscout"):
+        return apply_locked(environment, service)
+
+
+def apply_locked(environment, service):
     global STAGE
     p = SERVICES[service]
     addresses = json.loads(run(["ip", "-j", "address", "show"]))
@@ -224,7 +330,7 @@ def apply(environment, service):
         raise RuntimeError("The exact current PostgreSQL image must be retained")
     all_names = run(["docker", "ps", "-q"]).split()
     other_ids = {c["Name"].lstrip("/"): c["Id"] for c in json.loads(run(["docker", "inspect", *all_names])) if c["Name"].lstrip("/") != service}
-    roles_before = sql(service, "SELECT md5(string_agg(rolname||':'||coalesce(rolpassword,''),',' ORDER BY rolname)) FROM pg_authid WHERE rolcanlogin;")
+    roles_before = roles_fingerprint(service)
     identity = sql(service, "SELECT system_identifier FROM pg_control_system();")
     hba_path = sql(service, "SELECT current_setting('hba_file');")
     root = Path("/proc") / str(old["State"]["Pid"]) / "root"
@@ -246,7 +352,7 @@ def apply(environment, service):
     STAGE = "compose_and_existing_password_preflight"
     private = Path("/blockscout/services") / p["file"]
     previous = private.read_bytes()
-    stat = private.stat()
+    metadata = private.stat()
     candidate = patch_service(previous.decode(), service, old["Config"]["Cmd"])
     backup = Path("/etc/db-access/rollback/blockscout") / (service + "-" + str(time.time_ns()))
     backup.mkdir(parents=True, mode=0o700)
@@ -258,11 +364,10 @@ def apply(environment, service):
         raise RuntimeError("The rollback image tag differs from the running PostgreSQL binary")
     env = dict(v.split("=", 1) for v in old["Config"].get("Env", []) if "=" in v)
     internal_ip = next(iter(old["NetworkSettings"]["Networks"].values()))["IPAddress"]
-    internal_dsn = f"host={internal_ip} user={p['user']} dbname={p['database']} sslmode=disable connect_timeout=8"
-    if run(["docker", "exec", "--env", "PGPASSWORD", service, "psql", "-XtA", internal_dsn, "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"], env={**os.environ, "PGPASSWORD": env["POSTGRES_PASSWORD"]}) != "1":
-        raise RuntimeError("The existing password must work with internal SCRAM before restart")
-    try:
-        atomic(private, candidate.encode(), stat.st_mode & 0o777, stat.st_uid, stat.st_gid)
+    verify_internal_password(service, internal_ip, env["POSTGRES_PASSWORD"])
+    def rollback():
+        rollback_database(command, service, before_model, old["Image"], identity, roles_before, env["POSTGRES_PASSWORD"])
+    with compose_transaction(private, previous, candidate.encode(), metadata, rollback) as begin_recreation:
         after_model = json.loads(run(command + ["config", "--format", "json"]))["services"][service]
         for key in set(before_model) | set(after_model):
             if key not in ["image", "command", "volumes"] and before_model.get(key) != after_model.get(key):
@@ -270,6 +375,7 @@ def apply(environment, service):
         if before_model["volumes"] != [v for v in after_model["volumes"] if v["target"] not in ["/run/db-tls", "/run/db-access"]]:
             raise RuntimeError("The original PostgreSQL data mounts changed")
         STAGE = "single_database_recreation"
+        begin_recreation()
         run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service], timeout=180)
         for _ in range(60):
             fresh = inspect(service)
@@ -281,10 +387,8 @@ def apply(environment, service):
         STAGE = "verify_tls_password_cluster_and_preservation"
         verify(environment, service, old["Image"], env["POSTGRES_PASSWORD"], identity)
         fresh_ip = next(iter(fresh["NetworkSettings"]["Networks"].values()))["IPAddress"]
-        dsn = internal_dsn.replace("host=" + internal_ip + " ", "host=" + fresh_ip + " ")
-        if run(["docker", "exec", "--env", "PGPASSWORD", service, "psql", "-XtA", dsn, "-v", "ON_ERROR_STOP=1", "-c", "SELECT 1"], env={**os.environ, "PGPASSWORD": env["POSTGRES_PASSWORD"]}) != "1":
-            raise RuntimeError("Internal plaintext SCRAM must continue working")
-        if sql(service, "SELECT md5(string_agg(rolname||':'||coalesce(rolpassword,''),',' ORDER BY rolname)) FROM pg_authid WHERE rolcanlogin;") != roles_before:
+        verify_internal_password(service, fresh_ip, env["POSTGRES_PASSWORD"])
+        if roles_fingerprint(service) != roles_before:
             raise RuntimeError("Database roles/password verifier material changed")
         if any(inspect(name)["Id"] != value for name, value in other_ids.items()):
             raise RuntimeError("An unrelated container was recreated")
@@ -293,22 +397,6 @@ def apply(environment, service):
         fresh_mounts = sorted(tuple(m.get(k) for k in fields) for m in fresh["Mounts"] if m["Destination"] not in ["/run/db-tls", "/run/db-access"])
         if fresh["Image"] != old["Image"] or fresh_mounts != old_mounts:
             raise RuntimeError("Unexpected PostgreSQL image or original mount change")
-    except Exception:
-        atomic(private, previous, stat.st_mode & 0o777, stat.st_uid, stat.st_gid)
-        run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service], timeout=180)
-        for _ in range(60):
-            restored = inspect(service)
-            if restored["State"]["Running"] and restored["State"].get("Health", {}).get("Status") == "healthy":
-                if sql(service, "SELECT system_identifier FROM pg_control_system();") != identity:
-                    raise RuntimeError("Rollback returned a different PostgreSQL data cluster")
-                require_live_baseline(before_model, restored)
-                if restored["Image"] != old["Image"]:
-                    raise RuntimeError("Rollback did not restore the original PostgreSQL image")
-                break
-            time.sleep(1)
-        else:
-            raise RuntimeError("Rollback did not restore a healthy PostgreSQL instance")
-        raise
     return {"environment": environment, "service": service, "port": p["port"], "old_id": old["Id"], "new_id": fresh["Id"],
         "image_unchanged": True, "data_identity_unchanged": True, "passwords_unchanged": True, "other_container_ids_unchanged": True,
         "verified_tls_login": True, "plaintext_rejected": True, "isolated_candidate_hba_tls_check": True, "backup_directory": str(backup)}

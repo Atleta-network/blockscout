@@ -96,21 +96,15 @@ jobs:
         run: |
           .github/scripts/render-compose.sh
 
-      - name: Copy files to server
+      - name: Upload files to isolated per-run staging
         shell: bash
         env:
           HOST_1: ${{ secrets.HOST_1 }}
           HOST_1_USERNAME: ${{ secrets.HOST_1_USERNAME }}
           BASE_PATH: ${{ secrets.BASE_PATH }}
-        run: |
-          set -euo pipefail
-          target="${HOST_1_USERNAME}@${HOST_1}"
-          ssh -o BatchMode=yes "${target}" "mkdir -p '${BASE_PATH}'"
-          # Host certificates and HBA must be provisioned before copying TLS mounts.
-          ssh -o BatchMode=yes "${target}" 'sudo -n test -s /etc/db-access/tls/blockscout-db/current/fullchain.pem && sudo -n test -s /etc/db-access/tls/blockscout-db/current/privkey.pem && sudo -n test -s /etc/db-access/postgres/blockscout/db/pg_hba.conf && sudo -n test -s /etc/db-access/postgres/blockscout/stats-db/pg_hba.conf'
-          scp -r docker-compose/. "${target}:${BASE_PATH}/"
+        run: bash .github/scripts/upload-deployment.sh
 
-      - name: Deploy
+      - name: Deploy staged bundle under the shared lock
         shell: bash
         env:
           CI_REGISTRY: ${{ secrets.CI_REGISTRY }}
@@ -120,106 +114,23 @@ jobs:
           HOST_1: ${{ secrets.HOST_1 }}
           HOST_1_USERNAME: ${{ secrets.HOST_1_USERNAME }}
         run: |
-          set -euo pipefail
-
+          set -Eeuo pipefail
           target="${HOST_1_USERNAME}@${HOST_1}"
           remote_env=(
             "CI_REGISTRY=$(printf '%q' "${CI_REGISTRY}")"
             "CI_REGISTRY_REPO=$(printf '%q' "${CI_REGISTRY_REPO}")"
             "SERVICE_TAG=$(printf '%q' "${SERVICE_TAG}")"
             "BASE_PATH=$(printf '%q' "${BASE_PATH}")"
+            "DEPLOY_ID=$(printf '%q' "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}")"
           )
-
           ssh -o BatchMode=yes "${target}" "${remote_env[*]} bash -se" <<'REMOTE'
           set -Eeuo pipefail
-
-          required_vars=(CI_REGISTRY CI_REGISTRY_REPO SERVICE_TAG BASE_PATH)
-          for var in "${required_vars[@]}"; do
-            if [ -z "${!var:-}" ]; then
-              echo "Required variable ${var} is not set" >&2
-              exit 1
-            fi
-          done
-
-          lock_name="$(printf "%s" "${BASE_PATH}" | tr -cs 'A-Za-z0-9_.-' '_')"
-          lock_file="/tmp/blockscout-deploy-${lock_name}.lock"
-
-          run_deploy() {
-            cd "${BASE_PATH}"
-
-            frontend_image="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout-frontend:${SERVICE_TAG}"
-            backend_image="${CI_REGISTRY}/${CI_REGISTRY_REPO}/blockscout:${SERVICE_TAG}"
-
-            sed -i "s|image: .*blockscout-frontend:.*|image: ${frontend_image}|" services/frontend.yml
-            sed -i "s|image: .*blockscout:.*|image: ${backend_image}|" services/backend.yml
-
-            chmod 600 .env envs/common-blockscout.env envs/common-stats.env envs/common-user-ops-indexer.env
-            docker compose config --quiet
-            docker compose pull
-            docker compose up --detach --remove-orphans
-
-            wait_for_containers
-            docker exec proxy nginx -t
-            docker exec proxy nginx -s reload
-            docker exec backend curl -fsS --max-time 10 http://127.0.0.1:4000/api/health/liveness >/dev/null
-          }
-
-          wait_for_containers() {
-            local containers=(
-              db
-              redis-db
-              backend
-              frontend
-              stats-db
-              stats
-              visualizer
-              sig-provider
-              user-ops-indexer
-              proxy
-              certbot
-            )
-
-            for attempt in $(seq 1 60); do
-              local failed=0
-              for container in "${containers[@]}"; do
-                if ! docker inspect "${container}" >/dev/null 2>&1; then
-                  failed=1
-                  break
-                fi
-
-                state="$(docker inspect -f '{{.State.Status}}' "${container}")"
-                health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container}")"
-
-                if [ "${state}" != "running" ]; then
-                  failed=1
-                  break
-                fi
-
-                if [ "${health}" != "none" ] && [ "${health}" != "healthy" ]; then
-                  failed=1
-                  break
-                fi
-              done
-
-              if [ "${failed}" -eq 0 ]; then
-                return 0
-              fi
-
-              sleep 5
-            done
-
-            echo "Containers did not become healthy in time" >&2
-            docker compose ps || true
-            docker compose logs --tail=200 backend frontend proxy stats user-ops-indexer || true
-            return 1
-          }
-
-          if command -v flock >/dev/null 2>&1; then
-            export -f run_deploy wait_for_containers
-            flock -w 900 "${lock_file}" bash -c run_deploy
-          else
-            run_deploy
-          fi
+          case "${BASE_PATH}" in /*) ;; *) exit 1 ;; esac
+          [[ "${DEPLOY_ID}" =~ ^[0-9]+-[0-9]+$ ]] || exit 1
+          BASE_PATH=$(cd -- "${BASE_PATH}" && pwd -P)
+          stage="${BASE_PATH}/.incoming/${DEPLOY_ID}"
+          test -f "${stage}/.github/scripts/deploy-remote.sh"
+          bash "${stage}/.github/scripts/deploy-remote.sh"
           REMOTE
 
       - name: Deployment summary

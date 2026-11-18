@@ -34,6 +34,8 @@ reject_pattern() {
 require_file ".github/scripts/render-compose.sh"
 require_file ".github/workflows/build-images.yml"
 require_file ".github/workflows/deploy.yml"
+require_file ".github/scripts/upload-deployment.sh"
+require_file ".github/scripts/deploy-remote.sh"
 
 require_pattern ".github/workflows/build-images.yml" "Atleta-network/blockscout-frontend" "Atleta frontend repository checkout"
 require_pattern ".github/workflows/build-images.yml" "docker/login-action@v4" "current Docker registry login action"
@@ -43,11 +45,15 @@ require_pattern ".github/workflows/build-images.yml" "blockscout:\\$\\{\\{ steps
 
 require_pattern ".github/workflows/deploy.yml" "blockscout-deploy-\\$\\{\\{ inputs\\.environment \\}\\}" "environment deploy concurrency"
 require_pattern ".github/workflows/deploy.yml" "render-compose\\.sh" "compose render step"
-require_pattern ".github/workflows/deploy.yml" "docker compose config --quiet" "compose validation"
-require_pattern ".github/workflows/deploy.yml" "docker compose up --detach --remove-orphans" "non-destructive compose up"
-require_pattern ".github/workflows/deploy.yml" "flock -w 900" "remote deploy lock"
-require_pattern ".github/workflows/deploy.yml" "/api/health/liveness" "backend post-deploy API check"
+require_pattern ".github/workflows/deploy.yml" "upload-deployment\\.sh" "isolated deployment upload"
+require_pattern ".github/scripts/upload-deployment.sh" "\\.incoming" "per-run private staging"
+require_pattern ".github/scripts/deploy-remote.sh" "docker compose config --quiet" "compose validation"
+require_pattern ".github/scripts/deploy-remote.sh" "docker compose up --detach --remove-orphans" "non-destructive compose up"
+require_pattern ".github/scripts/deploy-remote.sh" "flock -w 900" "remote deploy lock"
+require_pattern ".github/scripts/deploy-remote.sh" "/api/health/liveness" "backend post-deploy API check"
 reject_pattern ".github/workflows/deploy.yml" "docker compose down" "destructive compose down"
+reject_pattern ".github/scripts/deploy-remote.sh" "docker compose down" "destructive compose down"
+reject_pattern ".github/workflows/deploy.yml" "scp -r docker-compose" "unlocked live Compose overwrite"
 
 require_pattern ".github/scripts/render-compose.sh" "required_vars=\\(" "strict render required variables"
 require_pattern ".github/scripts/render-compose.sh" "render_file services/frontend.yml" "frontend service rendering"
