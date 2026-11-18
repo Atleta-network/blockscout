@@ -24,6 +24,7 @@ SERVICES = {"db": {"user": "blockscout", "database": "blockscout", "port": 7432,
             "stats-db": {"user": "stats", "database": "stats", "port": 7433, "file": "stats.yml"}}
 ENVIRONMENTS = {"testnet_v2": {"address": "23.162.152.177", "domain": "blockscout.testnet-v2.atleta.network"},
                 "mainnet": {"address": "186.190.215.128", "domain": "blockscout.atleta.network"}}
+STAGE = "preflight"
 
 
 def run(argv, env=None, timeout=75):
@@ -148,7 +149,9 @@ def fixture(image, hba_directory):
             "-v", CERTIFICATE + ":/run/db-tls:ro", "-v", str(hba_directory) + ":/run/db-access:ro",
             image, "postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", *tls_arguments()])
         for _ in range(45):
-            p = subprocess.run(["docker", "exec", name, "pg_isready", "-U", "tls_fixture", "-d", "tls_fixture"], capture_output=True, timeout=10)
+            # The entrypoint's temporary init server only has a Unix socket.
+            # Require final TCP readiness before issuing the candidate HBA query.
+            p = subprocess.run(["docker", "exec", name, "pg_isready", "-h", "127.0.0.1", "-U", "tls_fixture", "-d", "tls_fixture"], capture_output=True, timeout=10)
             if p.returncode == 0:
                 break
             if not inspect(name)["State"]["Running"]:
@@ -208,6 +211,7 @@ def verify(environment, service, image, credential, system_identifier):
 
 
 def apply(environment, service):
+    global STAGE
     p = SERVICES[service]
     addresses = json.loads(run(["ip", "-j", "address", "show"]))
     if ENVIRONMENTS[environment]["address"] not in {a["local"] for link in addresses for a in link.get("addr_info", [])}:
@@ -237,7 +241,9 @@ def apply(environment, service):
     os.chmod(hba, 0o750)
     os.chown(hba, 0, 2000)
     atomic(hba / "pg_hba.conf", build_hba(original_hba, networks).encode())
+    STAGE = "isolated_tls_hba_fixture"
     fixture(old["Image"], hba)
+    STAGE = "compose_and_existing_password_preflight"
     private = Path("/blockscout/services") / p["file"]
     previous = private.read_bytes()
     stat = private.stat()
@@ -263,6 +269,7 @@ def apply(environment, service):
                 raise RuntimeError("The Compose patch changes an unrelated database setting")
         if before_model["volumes"] != [v for v in after_model["volumes"] if v["target"] not in ["/run/db-tls", "/run/db-access"]]:
             raise RuntimeError("The original PostgreSQL data mounts changed")
+        STAGE = "single_database_recreation"
         run(command + ["up", "--detach", "--timeout", "120", "--no-deps", "--pull", "never", service])
         for _ in range(60):
             fresh = inspect(service)
@@ -271,6 +278,7 @@ def apply(environment, service):
             time.sleep(1)
         else:
             raise RuntimeError("PostgreSQL did not become healthy after the controlled restart")
+        STAGE = "verify_tls_password_cluster_and_preservation"
         verify(environment, service, old["Image"], env["POSTGRES_PASSWORD"], identity)
         fresh_ip = next(iter(fresh["NetworkSettings"]["Networks"].values()))["IPAddress"]
         dsn = internal_dsn.replace("host=" + internal_ip + " ", "host=" + fresh_ip + " ")
@@ -317,6 +325,6 @@ if __name__ == "__main__":
     try:
         print(json.dumps(apply(args.environment, args.service)))
     except RuntimeError as error:
-        raise SystemExit("RuntimeError: " + str(error)) from None
+        raise SystemExit("RuntimeError: " + STAGE + ": " + str(error)) from None
     except Exception as error:
         raise SystemExit(type(error).__name__ + ": native TLS rollout failed; private output withheld") from None
