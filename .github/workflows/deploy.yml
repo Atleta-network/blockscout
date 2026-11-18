@@ -106,6 +106,8 @@ jobs:
           set -euo pipefail
           target="${HOST_1_USERNAME}@${HOST_1}"
           ssh -o BatchMode=yes "${target}" "mkdir -p '${BASE_PATH}'"
+          # Host certificates and HBA must be provisioned before copying TLS mounts.
+          ssh -o BatchMode=yes "${target}" 'sudo -n test -s /etc/db-access/tls/blockscout-db/current/fullchain.pem && sudo -n test -s /etc/db-access/tls/blockscout-db/current/privkey.pem && sudo -n test -s /etc/db-access/postgres/blockscout/db/pg_hba.conf && sudo -n test -s /etc/db-access/postgres/blockscout/stats-db/pg_hba.conf'
           scp -r docker-compose/. "${target}:${BASE_PATH}/"
 
       - name: Deploy

@@ -17,3 +17,5 @@ jobs:
         run: bash .github/scripts/guard-atleta-customizations.sh
       - name: Verify credential rendering without real secrets
         run: python3 .github/scripts/test-deployment-secrets.py
+      - name: Verify native database TLS boundary and preservation
+        run: python3 .github/scripts/test-native-db-tls.py

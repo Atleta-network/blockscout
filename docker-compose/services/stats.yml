@@ -12,12 +12,12 @@ services:
         chown -R 2000:2000 /var/lib/postgresql/data
 
   stats-db:
-    image: postgres:17-bookworm
+    image: postgres:17-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27
     user: 2000:2000
     shm_size: 256m
     restart: always
     container_name: 'stats-db'
-    command: postgres -c 'max_connections=200'
+    command: ["postgres", "-c", "max_connections=200", "-c", "ssl=on", "-c", "ssl_min_protocol_version=TLSv1.2", "-c", "ssl_cert_file=/run/db-tls/current/fullchain.pem", "-c", "ssl_key_file=/run/db-tls/current/privkey.pem", "-c", "hba_file=/run/db-access/pg_hba.conf"]
     environment:
         POSTGRES_DB: 'stats'
         POSTGRES_USER: 'stats'
@@ -26,6 +26,8 @@ services:
       - target: 5432
         published: 7433
     volumes:
+      - /etc/db-access/tls/blockscout-db:/run/db-tls:ro
+      - /etc/db-access/postgres/blockscout/stats-db:/run/db-access:ro
       - ./stats-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U stats -d stats"]
