@@ -72,7 +72,7 @@ require_pattern "docker-compose/services/db.yml" "pg_isready -U blockscout -d bl
 require_pattern "docker-compose/services/stats.yml" "pg_isready -U stats -d stats" "stats DB healthcheck"
 require_pattern "docker-compose/services/db.yml" "image: postgres:17-bookworm" "Blockscout DB image pinned to bookworm (glibc collation)"
 require_pattern "docker-compose/services/stats.yml" "image: postgres:17-bookworm" "stats DB image pinned to bookworm (glibc collation)"
-require_pattern "docker-compose/services/nginx.yml" "image: nginx:1.31.8-alpine3.24-slim" "pinned nginx proxy image"
+require_pattern "docker-compose/services/nginx.yml" "image: nginx:1.31.9-alpine3.24-slim" "pinned nginx proxy image"
 require_pattern "docker-compose/services/certbot.yml" "CERTBOT_EMAIL=\\$\\{CERTBOT_EMAIL\\}" "environment-driven certbot email"
 
 services=(
