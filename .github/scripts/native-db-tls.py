@@ -21,7 +21,7 @@ import subprocess
 import tempfile
 import time
 
-POSTGRES_IMAGE = "postgres:17-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27"
+POSTGRES_IMAGE = "postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b"
 CERTIFICATE = "/etc/db-access/tls/blockscout-db"
 SERVICES = {"db": {"user": "blockscout", "database": "blockscout", "port": 7432, "file": "db.yml"},
             "stats-db": {"user": "stats", "database": "stats", "port": 7433, "file": "stats.yml"}}
