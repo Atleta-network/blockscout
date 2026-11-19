@@ -70,8 +70,8 @@ require_pattern "docker-compose/services/nginx.yml" "healthcheck:" "nginx health
 require_pattern "docker-compose/services/redis.yml" "healthcheck:" "redis healthcheck"
 require_pattern "docker-compose/services/db.yml" "pg_isready -U blockscout -d blockscout" "Blockscout DB healthcheck"
 require_pattern "docker-compose/services/stats.yml" "pg_isready -U stats -d stats" "stats DB healthcheck"
-require_pattern "docker-compose/services/db.yml" "image: postgres:17-bookworm" "Blockscout DB image pinned to bookworm (glibc collation)"
-require_pattern "docker-compose/services/stats.yml" "image: postgres:17-bookworm" "stats DB image pinned to bookworm (glibc collation)"
+require_pattern "docker-compose/services/db.yml" "image: postgres:17\\.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b" "Blockscout DB image pinned to bookworm (glibc collation)"
+require_pattern "docker-compose/services/stats.yml" "image: postgres:17\\.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b" "stats DB image pinned to bookworm (glibc collation)"
 require_pattern "docker-compose/services/nginx.yml" "image: nginx:1.31.9-alpine3.24-slim" "pinned nginx proxy image"
 require_pattern "docker-compose/services/certbot.yml" "CERTBOT_EMAIL=\\$\\{CERTBOT_EMAIL\\}" "environment-driven certbot email"
 

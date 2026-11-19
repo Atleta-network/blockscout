@@ -47,6 +47,16 @@ class NativeTLS(unittest.TestCase):
         model['environment']['POSTGRES_PASSWORD']='different'
         with self.assertRaises(RuntimeError): tls.require_live_baseline(model,container)
 
+    def test_all_database_and_init_images_use_the_patched_same_family_binary(self):
+        # A later TLS prepare must not pin the former vulnerable PostgreSQL again.
+        expected = 'postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b'
+        self.assertEqual(tls.POSTGRES_IMAGE, expected)
+        for name in ['db.yml', 'stats.yml']:
+            text = (HERE.parents[1] / 'docker-compose/services' / name).read_text()
+            images = [line.split('image:', 1)[1].strip() for line in text.splitlines() if line.strip().startswith('image: postgres:')]
+            self.assertEqual(images, [expected, expected])
+            self.assertIn('user: 2000:2000', text)
+
     def test_source_services_keep_tls_after_deploy(self):
         root = HERE.parents[1] / 'docker-compose/services'
         for name, service in [('db.yml', 'db'), ('stats.yml', 'stats-db')]:

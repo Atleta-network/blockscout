@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   stats-db-init:
-    image: postgres:17-bookworm
+    image: postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
     volumes:
       - ./stats-db-data:/var/lib/postgresql/data
     entrypoint:
@@ -12,7 +12,7 @@ services:
         chown -R 2000:2000 /var/lib/postgresql/data
 
   stats-db:
-    image: postgres:17-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27
+    image: postgres:17.12-bookworm@sha256:837bed18782820fe967067cb5328b02b0d9992c1be9a37ee0c9c492cfc03af3b
     user: 2000:2000
     shm_size: 256m
     restart: always
